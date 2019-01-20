@@ -2,7 +2,12 @@
 # -*- coding: utf-8 -*-
 import json
 from decimal import Decimal
-#import struct
+import struct
+
+
+__author__ = "Akinava"
+__author_email__ = "akinava@gmail.com"
+__version__ = [0, 0]
 
 
 class NOT_FIND:
@@ -29,6 +34,135 @@ class NOT_FIND:
 
 
 not_find = NOT_FIND()
+
+
+class INTEGER:
+    """
+    types:
+    small int
+    certain length big int
+
+    0b00000000
+      sss
+      iii
+      gzz
+      nee
+
+    size bits:
+    00 1 byte  +/- 0x1f
+    01 2 bytes +/- 0x1fff
+    10 4 bytes +/- 0x1fffffff
+    11 8 bytes +/- 0x1fffffffffffffff
+    """
+
+    # bit
+    bit_sign = 7
+    bit_size_high = 6
+    bit_size_low = 5
+    bit_significant_high = 4
+    bit_significant_low = 0
+
+    # byte size
+    maximum_bytes = 8
+    first_byte_maxixum_value = (1 << (bit_significant_high + 1)) - 1
+    maximum_value = (first_byte_maxixum_value << (8 * (maximum_bytes - 1))) + \
+                             (1 << (8 * (maximum_bytes - 1))) - 1
+
+    @classmethod
+    def __check_size_is_correct(self, number):
+        if number <= self.maximum_value and \
+           number >= -1 * self.maximum_value:
+            return
+        raise Exception('requires -{value:x} <= number <= {value:x}'.format(value=self.maximum_value))
+        return False
+
+    @classmethod
+    def __read_bit(self, byte, bit_number):
+        return 1 if byte & (1 << (bit_number)) else 0
+
+    @classmethod
+    def __read_bits(self, byte, hight_bit, low_bit):
+        result = 0
+        for bit_number in range(hight_bit, low_bit-1, -1):
+            print bit_number, self.__read_bit(byte, bit_number)
+            result <<= 1
+            if self.__read_bit(byte, bit_number):
+                result |= 1
+            print result
+        return result
+
+    @classmethod
+    def write_bit():
+        pass
+
+    @classmethod
+    def __set_sign(self, number):
+        if number < 0:
+            return 1 << self.bit_sign
+        return 0
+
+    @classmethod
+    def __remove_sigh(self, number):
+        if number < 0:
+            return -1 * number
+        return number
+
+    @classmethod
+    def __define_number_length_in_bytes(self, number):
+        length = 0
+        max_value = self.first_byte_maxixum_value
+        while number > max_value:
+            length += 1
+            max_value = (self.first_byte_maxixum_value << 8 * ((2 ** length) - 1)) + \
+                        (1 << 8 * ((2 ** length) - 1)) - 1
+        return length
+
+
+    @classmethod
+    def __set_bytes_length(self, number, data):
+        length = self.__define_number_length_in_bytes(number)
+        data |= (length << self.bit_size_low)
+        data <<= (8 * (length ** 2))
+        return data
+
+    @classmethod
+    def __pack_number(self, number, data):
+        data |= number
+        return data
+
+    @classmethod
+    def __convert_number_to_hex(self, data):
+        return '{:02x}'.format(data).decode('hex')
+
+    @classmethod
+    def pack(self, number):
+        self.__check_size_is_correct(number)
+        data = 0
+        data = self.__set_sign(number)
+        number = self.__remove_sigh(number)
+        data = self.__set_bytes_length(number, data)
+        data = self.__pack_number(number, data)
+        return self.__convert_number_to_hex(data)
+
+    @classmethod
+    def unpack(data):
+        pass
+
+
+class CONTRACTION:
+    def __init__(self, *args):
+        self.contractions = []
+        for item in args:
+            self.contractions.append(item)
+
+    def add_contraction(self, item):
+        self.contractions.append(item)
+
+    def pack(self, item):
+        pass
+
+    def unpack(self, item):
+        pass
 
 
 class BTYPE:
@@ -228,17 +362,25 @@ class BDATA:
 
 
 if __name__ == "__main__":
-    d = BDATA({"q": {"w": "e"}})
+
+    int = -0x2550000000
+    print INTEGER.pack(int).encode('hex')
+
+    #print hex(STRUCT.small_int_maximum_size)
+
+
+    #d = BDATA({"q": {"w": "e"}})
 
     # pack maps
     # import/export maps
     # send receive maps
     # pack unpack bdata
 
-    print [d._bin]
-    print [d._json]
-    a = d.rrr.nnn
-    print a
+    #print [d._bin]
+    #print [d._json]
+    #a = d.rrr.nnn
+    #print a
+
     #js_data = d.__json
     #bd = d.__bdata()
     #d._from_bdata("\x00\x00")
