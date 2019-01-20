@@ -92,10 +92,6 @@ class INTEGER:
         return result
 
     @classmethod
-    def write_bit():
-        pass
-
-    @classmethod
     def __set_sign(self, number):
         if number < 0:
             return 1 << self.bit_sign
@@ -137,7 +133,6 @@ class INTEGER:
     @classmethod
     def pack(self, number):
         self.__check_size_is_correct(number)
-        data = 0
         data = self.__set_sign(number)
         number = self.__remove_sigh(number)
         data = self.__set_bytes_length(number, data)
