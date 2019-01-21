@@ -10,7 +10,7 @@ __author_email__ = "akinava@gmail.com"
 __version__ = [0, 0]
 
 
-class NOT_FIND:
+class NotFound:
     def __str__(self):
         return "NOT_FIND"
 
@@ -33,10 +33,10 @@ class NOT_FIND:
         return self is inst
 
 
-not_find = NOT_FIND()
+not_find = NotFound()
 
 
-class INTEGER:
+class Integer:
     """
     types:
     small int
@@ -69,9 +69,9 @@ class INTEGER:
                              (1 << (8 * (maximum_bytes - 1))) - 1
 
     @classmethod
-    def __check_size_is_correct(self, number):
-        if number <= self.maximum_value and \
-           number >= -1 * self.maximum_value:
+    def __check_size_is_correct(self):
+        if self.number <= self.maximum_value and \
+           self.number >= -1 * self.maximum_value:
             return
         raise Exception('requires -{value:x} <= number <= {value:x}'.format(value=self.maximum_value))
         return False
@@ -92,55 +92,119 @@ class INTEGER:
         return result
 
     @classmethod
-    def __set_sign(self, number):
-        if number < 0:
+    def __set_sign(self):
+        if self.number < 0:
             return 1 << self.bit_sign
         return 0
 
     @classmethod
-    def __remove_sigh(self, number):
-        if number < 0:
-            return -1 * number
-        return number
+    def __remove_sigh(self):
+        if self.number < 0:
+            self.number *= -1
 
     @classmethod
-    def __define_number_length_in_bytes(self, number):
+    def __define_number_length_in_bytes(self):
         length = 0
         max_value = self.first_byte_maxixum_value
-        while number > max_value:
+        while self.number > max_value:
             length += 1
             max_value = (self.first_byte_maxixum_value << 8 * ((2 ** length) - 1)) + \
                         (1 << 8 * ((2 ** length) - 1)) - 1
         return length
 
+    @classmethod
+    def __set_bytes_length(self):
+        length = self.__define_number_length_in_bytes()
+        self.data |= (length << self.bit_size_low)
+        self.data <<= (8 * (length ** 2))
 
     @classmethod
-    def __set_bytes_length(self, number, data):
-        length = self.__define_number_length_in_bytes(number)
-        data |= (length << self.bit_size_low)
-        data <<= (8 * (length ** 2))
-        return data
+    def __put_number(self):
+        self.data |= self.number
 
     @classmethod
-    def __pack_number(self, number, data):
-        data |= number
-        return data
+    def __convert_number_to_hex(self):
+        self.data = '{:02x}'.format(self.data).decode('hex')
 
     @classmethod
-    def __convert_number_to_hex(self, data):
-        return '{:02x}'.format(data).decode('hex')
+    def __define_bytes_length(self):
+        size_mask = (1 << self.bit_size_high) + (1 << self.bit_size_low)
+        return 2 ** ((ord(self.data[0]) | size_mask)  >> self.bit_size_low)
+
+    @classmethod
+    def __get_rest_part(self, length):
+        return self.data[length: ]
+
+    @classmethod
+    def __get_number(self, length):
+        number_mask = ~((1 << self.bit_sign) + \
+                        (1 << self.bit_size_high) + \
+                        (1 << self.bit_size_low)) & 0xff
+        self.number = ord(self.data[0]) & number_mask
+        for index in xrange(1, length):
+            self.number <<= 8
+            self.number &= ord(self.data[index])
+
+    @classmethod
+    def __get_sigh(self):
+        self.number *= -1 if ord(data[0]) << bit_sign else 1
 
     @classmethod
     def pack(self, number):
-        self.__check_size_is_correct(number)
-        data = self.__set_sign(number)
-        number = self.__remove_sigh(number)
-        data = self.__set_bytes_length(number, data)
-        data = self.__pack_number(number, data)
-        return self.__convert_number_to_hex(data)
+        self.number = number
+        self.__check_size_is_correct()
+        self.data = self.__set_sign()
+        self.__remove_sigh()
+        self.__set_bytes_length()
+        self.__put_number()
+        self.__convert_number_to_hex()
+        return self.data
 
     @classmethod
-    def unpack(data):
+    def unpack(self, data):
+        self.data = data
+        length = self.__define_bytes_length()
+        self.__get_number(length)
+        self.__get_sigh()
+        return self.number, self.__get_rest_part(length)
+
+
+class LongInteger:
+    def pack(self, numer):
+        pass
+
+    def unpack(self, data):
+        pass
+
+
+class Float:
+    def pack(self, numer):
+        pass
+
+    def unpack(self, data):
+        pass
+
+class Boolean:
+    def pack(self, numer):
+        pass
+
+    def unpack(self, data):
+        pass
+
+
+class List:
+    def pack(self, numer):
+        pass
+
+    def unpack(self, data):
+        pass
+
+
+class Dictionary:
+    def pack(self, numer):
+        pass
+
+    def unpack(self, data):
         pass
 
 
@@ -196,7 +260,6 @@ class BTYPE:
     """
 
 
-class BINT:
 
     #    2: int,          # positiv integer
     #    3: int,          # negativ integer
@@ -358,8 +421,14 @@ class BDATA:
 
 if __name__ == "__main__":
 
-    int = -0x2550000000
-    print INTEGER.pack(int).encode('hex')
+    number = -0x1fff0
+    hex = Integer.pack(number).encode('hex')
+    print hex
+    num_int = int(hex, 16)
+    print num_int
+    print bin(num_int)
+    #print int(Integer.pack(int).encode('hex')
+    #print hex(Integer.unpack(Integer.pack(int)))
 
     #print hex(STRUCT.small_int_maximum_size)
 
