@@ -69,12 +69,11 @@ class Integer:
                              (1 << (8 * (maximum_bytes - 1))) - 1
 
     @classmethod
-    def __check_size_is_correct(self):
+    def __check_number_size_is_correct(self):
         if self.number <= self.maximum_value and \
            self.number >= -1 * self.maximum_value:
             return
         raise Exception('requires -{value:x} <= number <= {value:x}'.format(value=self.maximum_value))
-        return False
 
     @classmethod
     def __read_bit(self, byte, bit_number):
@@ -116,7 +115,7 @@ class Integer:
     def __set_bytes_length(self):
         length = self.__define_number_length_in_bytes()
         self.data |= (length << self.bit_size_low)
-        self.data <<= (8 * (length ** 2))
+        self.data <<= (8 * ((2 ** length) - 1))
 
     @classmethod
     def __put_number(self):
@@ -129,7 +128,7 @@ class Integer:
     @classmethod
     def __define_bytes_length(self):
         size_mask = (1 << self.bit_size_high) + (1 << self.bit_size_low)
-        return 2 ** ((ord(self.data[0]) | size_mask)  >> self.bit_size_low)
+        return 2 ** ((ord(self.data[0]) & size_mask) >> self.bit_size_low)
 
     @classmethod
     def __get_rest_part(self, length):
@@ -141,18 +140,26 @@ class Integer:
                         (1 << self.bit_size_high) + \
                         (1 << self.bit_size_low)) & 0xff
         self.number = ord(self.data[0]) & number_mask
+
         for index in xrange(1, length):
             self.number <<= 8
-            self.number &= ord(self.data[index])
+            self.number |= ord(self.data[index])
 
     @classmethod
     def __get_sigh(self):
-        self.number *= -1 if ord(data[0]) << bit_sign else 1
+        self.number *= -1 if ord(self.data[0]) & (1 << self.bit_sign) else 1
+
+    @classmethod
+    def __check_data_size_is_correct(self, length):
+        if len(self.data) >= length:
+            return
+        raise Exception('data length less then {}'.format(length))
+
 
     @classmethod
     def pack(self, number):
         self.number = number
-        self.__check_size_is_correct()
+        self.__check_number_size_is_correct()
         self.data = self.__set_sign()
         self.__remove_sigh()
         self.__set_bytes_length()
@@ -164,6 +171,7 @@ class Integer:
     def unpack(self, data):
         self.data = data
         length = self.__define_bytes_length()
+        self.__check_data_size_is_correct(length)
         self.__get_number(length)
         self.__get_sigh()
         return self.number, self.__get_rest_part(length)
@@ -222,6 +230,12 @@ class CONTRACTION:
 
     def unpack(self, item):
         pass
+
+
+
+
+#=============================================================================#
+
 
 
 class BTYPE:
@@ -420,32 +434,25 @@ class BDATA:
 
 
 if __name__ == "__main__":
+    """
+    # test Integer
+    pack_test_cases = [
+        [0, '\x00'],
+        [0x1f, '\x1f'],
+        [-0x1f, '\x9f'],
+        [0x1fff, '\x3f\xff'],
+        [-0x1fff, '\xbf\xff'],
+        [0x1fffffff, '\x5f\xff\xff\xff'],
+        [-0x1fffffff, '\xdf\xff\xff\xff'],
+        [0x1fffffffffffffff, '\x7f\xff\xff\xff\xff\xff\xff\xff'],
+        [-0x1fffffffffffffff, '\xff\xff\xff\xff\xff\xff\xff\xff'],
+    ]
 
-    number = -0x1fff0
-    hex = Integer.pack(number).encode('hex')
-    print hex
-    num_int = int(hex, 16)
-    print num_int
-    print bin(num_int)
-    #print int(Integer.pack(int).encode('hex')
-    #print hex(Integer.unpack(Integer.pack(int)))
+    additional_data = '\xff'
+    for number, data in pack_test_cases:
+        print Integer.pack(number) == data
+        unpack_int, rest_data = Integer.unpack(data + additional_data)
+        print unpack_int == number
+        print rest_data == additional_data
 
-    #print hex(STRUCT.small_int_maximum_size)
-
-
-    #d = BDATA({"q": {"w": "e"}})
-
-    # pack maps
-    # import/export maps
-    # send receive maps
-    # pack unpack bdata
-
-    #print [d._bin]
-    #print [d._json]
-    #a = d.rrr.nnn
-    #print a
-
-    #js_data = d.__json
-    #bd = d.__bdata()
-    #d._from_bdata("\x00\x00")
-    #d._from_bdata("\x03\x02\x05\x00\02\05\x68\x65\x6c\x6c\x6f\x02\x6b\x65\x79\x01\x09")  # {0: "hello", "key": 9}
+    """
