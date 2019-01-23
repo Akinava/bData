@@ -45,7 +45,7 @@ class IntStrConverter:
     @classmethod
     def convert_int_to_str(self):
         hex_string = '{:x}'.format(self.data)
-        if len(hex_string) % 2: hex_string += '0'
+        if len(hex_string) % 2: hex_string = '0' + hex_string
         self.string = hex_string.decode('hex')
 
     @classmethod
@@ -98,24 +98,9 @@ class Integer(IntStrConverter):
             return
         raise Exception('data length less then {}'.format(self.length))
 
-    """
     @classmethod
-    def __read_bit(self, byte, bit_number):
-        return 1 if byte & (1 << (bit_number)) else 0
-
-    @classmethod
-    def __read_bits(self, byte, hight_bit, low_bit):
-        result = 0
-        for bit_number in range(hight_bit, low_bit-1, -1):
-            result <<= 1
-            if self.__read_bit(byte, bit_number):
-                result |= 1
-        return result
-    """
-
-    @classmethod
-    def make_mask(self, bit):
-        return (1 << bit) << 8 * ((2 ** self.length - 1) - 1)
+    def __make_mask(self, bit):
+        return (1 << bit) << (8 * (self.length - 1))
 
     @classmethod
     def __put_sign_to_string(self):
@@ -130,7 +115,7 @@ class Integer(IntStrConverter):
 
     @classmethod
     def __define_sigh_in_data(self):
-        if self.make_mask(self.bit_sign) & self.data:
+        if self.__make_mask(self.bit_sign) & self.data:
             self.number *= -1
 
     @classmethod
@@ -157,12 +142,6 @@ class Integer(IntStrConverter):
         size_mask = (1 << self.bit_size_high) | (1 << self.bit_size_low)
         self.length = 2 ** ((ord(self.string[0]) & size_mask) >> self.bit_size_low)
 
-    """
-    @classmethod
-    def __get_rest_part(self, length):
-        return self.staring[length: ]
-    """
-
     @classmethod
     def __get_string(self):
         rest_part_of_string = self.string[self.length: ]
@@ -171,16 +150,10 @@ class Integer(IntStrConverter):
 
     @classmethod
     def __clean_number(self):
-        sigh_mask = self.make_mask(self.bit_sign)
-        size_mask = self.make_mask(self.bit_size_high) | self.make_mask(self.bit_size_low)
+        sigh_mask = self.__make_mask(self.bit_sign)
+        size_mask = self.__make_mask(self.bit_size_high) | self.__make_mask(self.bit_size_low)
         number_mask = ~(sigh_mask | size_mask) & (1 << 8 * self.length) - 1
         self.number = self.data & number_mask
-
-    """
-    @classmethod
-    def __get_sigh(self):
-        self.number *= -1 if ord(self.data[0]) & (1 << self.bit_sign) else 1
-    """
 
     @classmethod
     def pack(self, number):
@@ -205,10 +178,43 @@ class Integer(IntStrConverter):
         return self.number, rest_part_of_data
 
 
-class LongInteger:
-    def pack(self, number):
-        pass
+class LongInteger(IntStrConverter):
+    @classmethod
+    def __get_sigh(self):
+        self.sigh = 1
+        if self.number < 0:
+            self.sigh = -1
 
+    @classmethod
+    def __remove_number_sigh(self):
+        if self.number < 0:
+            self.data *= -1
+
+    @classmethod
+    def __define_length_in_bytes(self):
+        self.length = len(self.string)
+
+    @classmethod
+    def __put_sigh_to_string(self):
+        self.length *= self.sigh
+
+    @classmethod
+    def __add_length(self):
+        self.string = Integer.pack(self.length) + self.string
+
+    @classmethod
+    def pack(self, number):
+        self.number = number
+        self.data = number
+        self.__get_sigh()
+        self.__remove_number_sigh()
+        self.convert_int_to_str()
+        self.__define_length_in_bytes()
+        self.__put_sigh_to_string()
+        self.__add_length()
+        return self.string
+
+    @classmethod
     def unpack(self, string):
         pass
 
@@ -462,12 +468,13 @@ class BDATA:
 
 if __name__ == "__main__":
     print "test start"
-    #"""
+    print "-" * 10
     print "Integer"
     pack_test_cases = [
         [0, '\x00'],
         [0x1f, '\x1f'],
         [-0x1f, '\x9f'],
+        [0x1ff, '\x21\xff'],
         [0x1fff, '\x3f\xff'],
         [-0x1fff, '\xbf\xff'],
         [0x1fffffff, '\x5f\xff\xff\xff'],
@@ -478,26 +485,35 @@ if __name__ == "__main__":
 
     additional_data = '\xff'
     for number, data in pack_test_cases:
-        print "pack", hex(number), Integer.pack(number) == data
+        if Integer.pack(number) != data:
+            print "pack", hex(number)
         unpack_int, rest_data = Integer.unpack(data + additional_data)
-        print "unpack", hex(number), hex(unpack_int), unpack_int == number
-        print "rest data", rest_data == additional_data
+        if unpack_int != number:
+            print "unpack", hex(number)
+        if rest_data != additional_data:
+            print "rest data", hex(number)
 
     try:
         Integer.pack(0x2fffffffffffffff)
-        print "False"
+        print "False pack exception"
     except:
-        print "pack exception True"
+        pass
 
     try:
         Integer.unpack('\xff')
-        print "False"
+        print "False unpack exception"
     except:
-        print "unpack exception True"
-    #"""
+        pass
+    print "-" * 10
     print "LongInteger"
-    LongInteger.pack(0x2ffffffffffffffff) == ''
-    #LongInteger.pack(-0x2ffffffffffffffff) == ''
+
+    pack_test = [0x2ffffffffffffffff, '\x09\x02\xff\xff\xff\xff\xff\xff\xff\xff']
+    if LongInteger.pack(pack_test[0]) != pack_test[1]:
+         print "pack", hex(pack_tests[0])
+
+    pack_test = [-0x2ffffffffffffffff, '\x89\x02\xff\xff\xff\xff\xff\xff\xff\xff']
+    if LongInteger.pack(pack_test[0]) != pack_test[1]:
+        print "pack", hex(pack_test[0])
 
 
     print "test end"
