@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 import json
 from decimal import Decimal
-import struct
 
 
 __author__ = "Akinava"
@@ -180,6 +179,18 @@ class Integer(IntStrConverter):
 
 class LongInteger(IntStrConverter):
     @classmethod
+    def __check_data_size_is_correct(self):
+        if len(self.string) >= self.length:
+            return
+        raise Exception('data length less then {}'.format(self.length))
+
+    @classmethod
+    def __check_string_has_data(self):
+        if self.string != "":
+            return
+        raise Exception('data is empty')
+
+    @classmethod
     def __get_sigh(self):
         self.sigh = 1
         if self.number < 0:
@@ -189,6 +200,17 @@ class LongInteger(IntStrConverter):
     def __remove_number_sigh(self):
         if self.number < 0:
             self.data *= -1
+
+    @classmethod
+    def __get_sigh_from_length(self):
+        self.sigh = 1
+        if self.length < 0:
+            self.sigh = -1
+            self.length *= -1
+
+    @classmethod
+    def __set_sigh_of_number(self):
+        self.number = self.data * self.sigh
 
     @classmethod
     def __define_length_in_bytes(self):
@@ -201,6 +223,17 @@ class LongInteger(IntStrConverter):
     @classmethod
     def __add_length(self):
         self.string = Integer.pack(self.length) + self.string
+
+    @classmethod
+    def __get_length_in_string(self):
+        self.length, self.string = Integer.unpack(self.string)
+
+    @classmethod
+    def __get_number(self):
+        rest_part_of_string = self.string[self.length: ]
+        self.string = self.string[0: self.length]
+        self.convert_str_to_int()
+        return rest_part_of_string
 
     @classmethod
     def pack(self, number):
@@ -216,10 +249,43 @@ class LongInteger(IntStrConverter):
 
     @classmethod
     def unpack(self, string):
-        pass
+        self.string = string
+        self.__check_string_has_data()
+        self.__get_length_in_string()
+        self.__get_sigh_from_length()
+        self.__check_data_size_is_correct()
+        rest_part_of_string = self.__get_number()
+        self.__set_sigh_of_number()
+        return self.number, rest_part_of_string
 
 
 class Float:
+    @classmethod
+    def mantissa(self, number):
+        if 'e' in str(number):
+            mantissa, exponent = str(number).splir('e')
+        else:
+            mantissa = str(number)
+            exponent = '0'
+
+        if '.' in mantissa:
+            exponent = int(exponent) - len(mantissa) - mantissa.index('.')
+            mantissa = mantissa.replace('.', '')
+        else:
+            exponent = int(exponent)
+
+        mantissa = int(mantissa)
+        print mantissa, exponent
+
+
+        #return Decimal(number).scaleb(-self.exponent(number)).normalize()
+
+    @classmethod
+    def exponent(self, number):
+        #(sign, digits, exponent) = Decimal(number).as_tuple()
+        #return len(digits) + exponent - 1
+        pass
+
     def pack(self, number):
         pass
 
@@ -227,11 +293,16 @@ class Float:
         pass
 
 class Boolean:
-    def pack(self, numer):
-        pass
+    variables = {
+        False: '\x00',
+        True:  '\x01',
+        None:  '\xff',
+    }
+    def pack(self, variable):
+        return variables[variable]
 
     def unpack(self, data):
-        pass
+        return variables.keys()[variables.values().index(data[0])], data[1: ]
 
 
 class List:
@@ -468,8 +539,12 @@ class BDATA:
 
 if __name__ == "__main__":
     print "test start"
+
+    additional_data = '\xff'
+
     print "-" * 10
     print "Integer"
+
     pack_test_cases = [
         [0, '\x00'],
         [0x1f, '\x1f'],
@@ -483,7 +558,6 @@ if __name__ == "__main__":
         [-0x1fffffffffffffff, '\xff\xff\xff\xff\xff\xff\xff\xff'],
     ]
 
-    additional_data = '\xff'
     for number, data in pack_test_cases:
         if Integer.pack(number) != data:
             print "pack", hex(number)
@@ -504,16 +578,56 @@ if __name__ == "__main__":
         print "False unpack exception"
     except:
         pass
+
     print "-" * 10
     print "LongInteger"
 
     pack_test = [0x2ffffffffffffffff, '\x09\x02\xff\xff\xff\xff\xff\xff\xff\xff']
     if LongInteger.pack(pack_test[0]) != pack_test[1]:
-         print "pack", hex(pack_tests[0])
+         print "False pack", hex(pack_test[0])
+
+    long_int, rest_data =  LongInteger.unpack(pack_test[1] + additional_data)
+    if long_int != pack_test[0] or rest_data != additional_data:
+        print "False unpack", hex(pack_test[0])
 
     pack_test = [-0x2ffffffffffffffff, '\x89\x02\xff\xff\xff\xff\xff\xff\xff\xff']
     if LongInteger.pack(pack_test[0]) != pack_test[1]:
-        print "pack", hex(pack_test[0])
+        print "False pack", hex(pack_test[0])
 
+    long_int, rest_data =  LongInteger.unpack(pack_test[1] + additional_data)
+    if long_int != pack_test[0] or rest_data != additional_data:
+        print "False unpack", hex(pack_test[0]), hex(long_int)
 
+    try:
+        LongInteger.unpack('')
+        print "False LongInteger unpack empty string exception"
+    except:
+        pass
+
+    try:
+        LongInteger.unpack('\x89\x02\xff')
+        print "False LongInteger unpack wrong length string exception"
+    except:
+        pass
+
+    print "-" * 10
+    print "Float"
+    f = 0.0001111111
+    print 'flo', str(f)
+    print 'man', Float.mantissa(f)
+
+    print "-" * 10
     print "test end"
+
+
+"""
+class Float:
+    @classmethod
+    def man(self, number):
+        return Decimal(number).scaleb(-self.exp(number)).normalize()
+
+    @classmethod
+    def exp(self, number):
+        (sign, digits, exponent) = Decimal(number).as_tuple()
+        return len(digits) + exponent - 1
+"""
