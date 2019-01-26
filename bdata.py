@@ -41,15 +41,14 @@ class IntStrConverter:
     self.data   | hex on int format
     self.string | hex string
     """
-    @classmethod
-    def convert_int_to_str(self):
-        hex_string = '{:x}'.format(self.data)
-        if len(hex_string) % 2: hex_string = '0' + hex_string
-        self.string = hex_string.decode('hex')
 
-    @classmethod
+    def convert_int_to_str(self):
+        hex_string = "{:x}".format(self.data)
+        if len(hex_string) % 2: hex_string = "0" + hex_string
+        self.string = hex_string.decode("hex")
+
     def convert_str_to_int(self):
-        self.data = int(self.string.encode('hex'), 16)
+        self.data = int(self.string.encode("hex"), 16)
 
 
 class Integer(IntStrConverter):
@@ -84,40 +83,39 @@ class Integer(IntStrConverter):
     maximum_value = (first_byte_maxixum_value << (8 * (maximum_bytes - 1))) + \
                              (1 << (8 * (maximum_bytes - 1))) - 1
 
-    @classmethod
+    def __init__(self, varable):
+        if isinstance(varable, (int, long)):
+            self.number = varable
+        if isinstance(varable, str):
+            self.string = varable
+
     def __check_number_size_is_correct(self):
         if self.number <= self.maximum_value and \
            self.number >= -1 * self.maximum_value:
             return
-        raise Exception('requires -{value:x} <= number <= {value:x}'.format(value=self.maximum_value))
+        raise Exception("requires -{value:x} <= number <= {value:x}".format(value=self.maximum_value))
 
-    @classmethod
     def __check_data_size_is_correct(self):
         if len(self.string) >= self.length:
             return
-        raise Exception('data length less then {}'.format(self.length))
+        raise Exception("data length less then {}".format(self.length))
 
-    @classmethod
     def __make_mask(self, bit):
         return (1 << bit) << (8 * (self.length - 1))
 
-    @classmethod
     def __put_sign_to_string(self):
         self.data = 0
         if self.number < 0:
             self.data = 1 << self.bit_sign
 
-    @classmethod
     def __remove_number_sigh(self):
         if self.number < 0:
             self.number *= -1
 
-    @classmethod
     def __define_sigh_in_data(self):
         if self.__make_mask(self.bit_sign) & self.data:
             self.number *= -1
 
-    @classmethod
     def __define_number_length_in_bytes(self):
         self.length = 0
         max_value = self.first_byte_maxixum_value
@@ -126,37 +124,31 @@ class Integer(IntStrConverter):
             max_value = (self.first_byte_maxixum_value << 8 * ((2 ** self.length) - 1)) + \
                         (1 << 8 * ((2 ** self.length) - 1)) - 1
 
-    @classmethod
     def __set_bytes_length(self):
         self.__define_number_length_in_bytes()
         self.data |= (self.length << self.bit_size_low)
         self.data <<= (8 * ((2 ** self.length) - 1))
 
-    @classmethod
     def __put_number(self):
         self.data |= self.number
 
-    @classmethod
     def __define_bytes_length(self):
         size_mask = (1 << self.bit_size_high) | (1 << self.bit_size_low)
         self.length = 2 ** ((ord(self.string[0]) & size_mask) >> self.bit_size_low)
 
-    @classmethod
     def __get_string(self):
         rest_part_of_string = self.string[self.length: ]
         self.string = self.string[0: self.length]
         return rest_part_of_string
 
-    @classmethod
     def __clean_number(self):
         sigh_mask = self.__make_mask(self.bit_sign)
         size_mask = self.__make_mask(self.bit_size_high) | self.__make_mask(self.bit_size_low)
         number_mask = ~(sigh_mask | size_mask) & (1 << 8 * self.length) - 1
         self.number = self.data & number_mask
 
-    @classmethod
-    def pack(self, number):
-        self.number = number
+    @property
+    def pack(self):
         self.__check_number_size_is_correct()
         self.__put_sign_to_string()
         self.__remove_number_sigh()
@@ -165,9 +157,8 @@ class Integer(IntStrConverter):
         self.convert_int_to_str()
         return self.string
 
-    @classmethod
-    def unpack(self, string):
-        self.string = string
+    @property
+    def unpack(self):
         self.__define_bytes_length()
         self.__check_data_size_is_correct()
         rest_part_of_data = self.__get_string()
@@ -178,67 +169,61 @@ class Integer(IntStrConverter):
 
 
 class LongInteger(IntStrConverter):
-    @classmethod
+    def __init__(self, varable):
+        if isinstance(varable, (int, long)):
+            self.number = varable
+        if isinstance(varable, str):
+            self.string = varable
+
     def __check_data_size_is_correct(self):
         if len(self.string) >= self.length:
             return
-        raise Exception('data length less then {}'.format(self.length))
+        raise Exception("data length less then {}".format(self.length))
 
-    @classmethod
     def __check_string_has_data(self):
         if self.string != "":
             return
-        raise Exception('data is empty')
+        raise Exception("data is empty")
 
-    @classmethod
     def __get_sigh(self):
         self.sigh = 1
         if self.number < 0:
             self.sigh = -1
 
-    @classmethod
     def __remove_number_sigh(self):
         if self.number < 0:
             self.data *= -1
 
-    @classmethod
     def __get_sigh_from_length(self):
         self.sigh = 1
         if self.length < 0:
             self.sigh = -1
             self.length *= -1
 
-    @classmethod
     def __set_sigh_of_number(self):
         self.number = self.data * self.sigh
 
-    @classmethod
     def __define_length_in_bytes(self):
         self.length = len(self.string)
 
-    @classmethod
     def __put_sigh_to_string(self):
         self.length *= self.sigh
 
-    @classmethod
     def __add_length(self):
-        self.string = Integer.pack(self.length) + self.string
+        self.string = Integer(self.length).pack + self.string
 
-    @classmethod
     def __get_length_in_string(self):
-        self.length, self.string = Integer.unpack(self.string)
+        self.length, self.string = Integer(self.string).unpack
 
-    @classmethod
     def __get_number(self):
         rest_part_of_string = self.string[self.length: ]
         self.string = self.string[0: self.length]
         self.convert_str_to_int()
         return rest_part_of_string
 
-    @classmethod
-    def pack(self, number):
-        self.number = number
-        self.data = number
+    @property
+    def pack(self):
+        self.data = self.number
         self.__get_sigh()
         self.__remove_number_sigh()
         self.convert_int_to_str()
@@ -247,9 +232,8 @@ class LongInteger(IntStrConverter):
         self.__add_length()
         return self.string
 
-    @classmethod
-    def unpack(self, string):
-        self.string = string
+    @property
+    def unpack(self):
         self.__check_string_has_data()
         self.__get_length_in_string()
         self.__get_sigh_from_length()
@@ -260,49 +244,78 @@ class LongInteger(IntStrConverter):
 
 
 class Float:
-    @classmethod
-    def mantissa(self, number):
-        if 'e' in str(number):
-            mantissa, exponent = str(number).splir('e')
+    def __init__(self, varable):
+        if isinstance(varable, (float, Decimal)):
+            self.number = varable
+        if isinstance(varable, str):
+            self.string = varable
+
+    def __get_mantissa_and_exponent(self):
+        self.__check_exponent()
+        self.__check_dot()
+        self.__cut_right_zeros()
+        self.mantissa = int(self.mantissa)
+
+    def __cut_right_zeros(self):
+        self.exponent += len(self.mantissa) - len(self.mantissa.rstrip("0"))
+        self.mantissa = self.mantissa.rstrip("0")
+
+    def __check_exponent(self):
+        if "e" in str(self.number):
+            self.mantissa, self.exponent = str(number).split("e")
         else:
-            mantissa = str(number)
-            exponent = '0'
+            self.mantissa = str(number)
+            self.exponent = "0"
 
-        if '.' in mantissa:
-            exponent = int(exponent) - len(mantissa) - mantissa.index('.')
-            mantissa = mantissa.replace('.', '')
+    def __check_dot(self):
+        if "." in self.mantissa:
+            self.exponent = int(self.exponent) - len(self.mantissa) + self.mantissa.index(".") + 1
+            self.mantissa = self.mantissa.replace(".", "")
         else:
-            exponent = int(exponent)
+            self.exponent = int(self.exponent)
 
-        mantissa = int(mantissa)
-        print mantissa, exponent
+    def __add_exponent(self):
+        self.string = Integer(self.exponent).pack
 
+    def __add_mantissa(self):
+        self.string += Integer(self.mantissa).pack
 
-        #return Decimal(number).scaleb(-self.exponent(number)).normalize()
+    @property
+    def pack(self):
+        self.__get_mantissa_and_exponent()
+        self.__add_exponent()
+        self.__add_mantissa()
+        return self.string
 
-    @classmethod
-    def exponent(self, number):
-        #(sign, digits, exponent) = Decimal(number).as_tuple()
-        #return len(digits) + exponent - 1
+    @property
+    def unpack(self):
         pass
 
-    def pack(self, number):
-        pass
-
-    def unpack(self, data):
-        pass
 
 class Boolean:
     variables = {
-        False: '\x00',
-        True:  '\x01',
-        None:  '\xff',
+        False: "\x00",
+        True:  "\x01",
+        None:  "\xff",
     }
-    def pack(self, variable):
-        return variables[variable]
 
-    def unpack(self, data):
-        return variables.keys()[variables.values().index(data[0])], data[1: ]
+    def __init__(self, varable):
+        if isinstance(varable, (bool, type(None))):
+            self.varable = varable
+        if isinstance(varable, str):
+            self.string = string
+
+    @property
+    def pack(self):
+        return variables[self.variable]
+
+    @property
+    def unpack(self):
+        self.varable = self.variables.keys()[
+            self.variables.values().index(self.string[0])
+        ]
+        rest_string = data[1: ]
+        return self.varable, rest_string
 
 
 class List:
@@ -417,8 +430,8 @@ class BNONE:
 
 class BBOOL:
     TYPES = {
-        '\x00': False,
-        '\x01': True,
+        "\x00": False,
+        "\x01": True,
     }
 
     @classmethod
@@ -540,41 +553,41 @@ class BDATA:
 if __name__ == "__main__":
     print "test start"
 
-    additional_data = '\xff'
+    additional_data = "\xff"
 
     print "-" * 10
     print "Integer"
 
     pack_test_cases = [
-        [0, '\x00'],
-        [0x1f, '\x1f'],
-        [-0x1f, '\x9f'],
-        [0x1ff, '\x21\xff'],
-        [0x1fff, '\x3f\xff'],
-        [-0x1fff, '\xbf\xff'],
-        [0x1fffffff, '\x5f\xff\xff\xff'],
-        [-0x1fffffff, '\xdf\xff\xff\xff'],
-        [0x1fffffffffffffff, '\x7f\xff\xff\xff\xff\xff\xff\xff'],
-        [-0x1fffffffffffffff, '\xff\xff\xff\xff\xff\xff\xff\xff'],
+        [0, "\x00"],
+        [0x1f, "\x1f"],
+        [-0x1f, "\x9f"],
+        [0x1ff, "\x21\xff"],
+        [0x1fff, "\x3f\xff"],
+        [-0x1fff, "\xbf\xff"],
+        [0x1fffffff, "\x5f\xff\xff\xff"],
+        [-0x1fffffff, "\xdf\xff\xff\xff"],
+        [0x1fffffffffffffff, "\x7f\xff\xff\xff\xff\xff\xff\xff"],
+        [-0x1fffffffffffffff, "\xff\xff\xff\xff\xff\xff\xff\xff"],
     ]
 
     for number, data in pack_test_cases:
-        if Integer.pack(number) != data:
+        if Integer(number).pack != data:
             print "pack", hex(number)
-        unpack_int, rest_data = Integer.unpack(data + additional_data)
+        unpack_int, rest_data = Integer(data+additional_data).unpack
         if unpack_int != number:
             print "unpack", hex(number)
         if rest_data != additional_data:
             print "rest data", hex(number)
 
     try:
-        Integer.pack(0x2fffffffffffffff)
+        Integer(0x2fffffffffffffff).pack
         print "False pack exception"
     except:
         pass
 
     try:
-        Integer.unpack('\xff')
+        Integer("\xff").unpack
         print "False unpack exception"
     except:
         pass
@@ -582,39 +595,65 @@ if __name__ == "__main__":
     print "-" * 10
     print "LongInteger"
 
-    pack_test = [0x2ffffffffffffffff, '\x09\x02\xff\xff\xff\xff\xff\xff\xff\xff']
-    if LongInteger.pack(pack_test[0]) != pack_test[1]:
+    pack_test = [0x2ffffffffffffffff, "\x09\x02\xff\xff\xff\xff\xff\xff\xff\xff"]
+    if LongInteger(pack_test[0]).pack != pack_test[1]:
          print "False pack", hex(pack_test[0])
 
-    long_int, rest_data =  LongInteger.unpack(pack_test[1] + additional_data)
+    long_int, rest_data =  LongInteger(pack_test[1]+additional_data).unpack
     if long_int != pack_test[0] or rest_data != additional_data:
         print "False unpack", hex(pack_test[0])
 
-    pack_test = [-0x2ffffffffffffffff, '\x89\x02\xff\xff\xff\xff\xff\xff\xff\xff']
-    if LongInteger.pack(pack_test[0]) != pack_test[1]:
+    pack_test = [-0x2ffffffffffffffff, "\x89\x02\xff\xff\xff\xff\xff\xff\xff\xff"]
+    if LongInteger(pack_test[0]).pack != pack_test[1]:
         print "False pack", hex(pack_test[0])
 
-    long_int, rest_data =  LongInteger.unpack(pack_test[1] + additional_data)
+    long_int, rest_data =  LongInteger(pack_test[1]+additional_data).unpack
     if long_int != pack_test[0] or rest_data != additional_data:
         print "False unpack", hex(pack_test[0]), hex(long_int)
 
     try:
-        LongInteger.unpack('')
+        LongInteger("").unpack
         print "False LongInteger unpack empty string exception"
     except:
         pass
 
     try:
-        LongInteger.unpack('\x89\x02\xff')
+        LongInteger("\x89\x02\xff").unpack
         print "False LongInteger unpack wrong length string exception"
     except:
         pass
 
     print "-" * 10
     print "Float"
-    f = 0.0001111111
-    print 'flo', str(f)
-    print 'man', Float.mantissa(f)
+
+    pack_test = [
+        [0.0001111111,   '\x8a\x40\x10\xf4\x47'],  # -10 1111111
+        [-0.0001111111,  '\x8a\xc0\x10\xf4\x47'],  # -10 -1111111
+        [1.00000001,     '\x88\x45\xf5\xe1\x01'],  # -8 100000001
+        [-1.00000001,    '\x88\xc5\xf5\xe1\x01'],  # -8 -100000001
+        [10000000.0,     '\x07\x01'],              # 7 1
+        [-10000000.0,    '\x07\x81'],              # 7 -1
+        [1.2323435e-19,  '\x9a\x40\xbc\x0a\x6b'],  # -26 12323435
+        [-1.2323435e-19, '\x9a\xc0\xbc\x0a\x6b'],  # -26 -12323435
+        [1.1111e+19,     '\x0f\x40\x00\x2b\x67'],  # 15 11111
+        [-1.1111e+19,    '\x0f\xc0\x00\x2b\x67'],  # 15 -11111
+    ]
+
+    for number, data in pack_test:
+        if Float(number).pack != data:
+            print "False pack", number
+        float_number, rest_data = Float(data+additional_data).unpack
+        if float_number != number:
+            print "False unpack", number
+        if rest_data != additional_data:
+            print "False rest data"
+
+    print "-" * 10
+    print "Bool None"
+
+    for variable, data in Boolean.variables.items():
+        if Boolean(varable).pack != data:
+            print "False pack", variable
 
     print "-" * 10
     print "test end"
