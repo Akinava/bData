@@ -83,11 +83,11 @@ class Integer(IntStrConverter):
     maximum_value = (first_byte_maxixum_value << (8 * (maximum_bytes - 1))) + \
                              (1 << (8 * (maximum_bytes - 1))) - 1
 
-    def __init__(self, varable):
-        if isinstance(varable, (int, long)):
-            self.number = varable
-        if isinstance(varable, str):
-            self.string = varable
+    def __init__(self, variable):
+        if isinstance(variable, (int, long)):
+            self.number = variable
+        if isinstance(variable, str):
+            self.string = variable
 
     def __check_number_size_is_correct(self):
         if self.number <= self.maximum_value and \
@@ -169,11 +169,11 @@ class Integer(IntStrConverter):
 
 
 class LongInteger(IntStrConverter):
-    def __init__(self, varable):
-        if isinstance(varable, (int, long)):
-            self.number = varable
-        if isinstance(varable, str):
-            self.string = varable
+    def __init__(self, variable):
+        if isinstance(variable, (int, long)):
+            self.number = variable
+        if isinstance(variable, str):
+            self.string = variable
 
     def __check_data_size_is_correct(self):
         if len(self.string) >= self.length:
@@ -244,13 +244,13 @@ class LongInteger(IntStrConverter):
 
 
 class Float:
-    def __init__(self, varable):
-        if isinstance(varable, (float, Decimal)):
-            self.number = varable
-        if isinstance(varable, str):
-            self.string = varable
+    def __init__(self, variable):
+        if isinstance(variable, (float, Decimal)):
+            self.number = variable
+        if isinstance(variable, str):
+            self.string = variable
 
-    def __get_mantissa_and_exponent(self):
+    def __get_mantissa_and_exponent_from_number(self):
         self.__check_exponent()
         self.__check_dot()
         self.__cut_right_zeros()
@@ -274,22 +274,34 @@ class Float:
         else:
             self.exponent = int(self.exponent)
 
-    def __add_exponent(self):
+    def __add_exponent_to_string(self):
         self.string = Integer(self.exponent).pack
 
-    def __add_mantissa(self):
+    def __add_mantissa_to_string(self):
         self.string += Integer(self.mantissa).pack
+
+    def __get_exponent_from_string(self):
+        self.exponent, self.string = Integer(self.string).unpack
+
+    def __get_mantissa_from_string(self):
+        self.mantissa, self.string = Integer(self.string).unpack
+
+    def __build_float(self):
+        self.number = float(self.mantissa * 10 ** self.exponent)
 
     @property
     def pack(self):
-        self.__get_mantissa_and_exponent()
-        self.__add_exponent()
-        self.__add_mantissa()
+        self.__get_mantissa_and_exponent_from_number()
+        self.__add_exponent_to_string()
+        self.__add_mantissa_to_string()
         return self.string
 
     @property
     def unpack(self):
-        pass
+        self.__get_exponent_from_string()
+        self.__get_mantissa_from_string()
+        self.__build_float()
+        return self.number, self.string
 
 
 class Boolean:
@@ -299,23 +311,23 @@ class Boolean:
         None:  "\xff",
     }
 
-    def __init__(self, varable):
-        if isinstance(varable, (bool, type(None))):
-            self.varable = varable
-        if isinstance(varable, str):
+    def __init__(self, variable):
+        if isinstance(variable, (bool, type(None))):
+            self.variable = variable
+        if isinstance(variable, str):
             self.string = string
 
     @property
     def pack(self):
-        return variables[self.variable]
+        return self.variables[self.variable]
 
     @property
     def unpack(self):
-        self.varable = self.variables.keys()[
+        self.variable = self.variables.keys()[
             self.variables.values().index(self.string[0])
         ]
         rest_string = data[1: ]
-        return self.varable, rest_string
+        return self.variable, rest_string
 
 
 class List:
@@ -643,7 +655,7 @@ if __name__ == "__main__":
         if Float(number).pack != data:
             print "False pack", number
         float_number, rest_data = Float(data+additional_data).unpack
-        if float_number != number:
+        if str(float_number) != str(number):
             print "False unpack", number
         if rest_data != additional_data:
             print "False rest data"
@@ -652,21 +664,8 @@ if __name__ == "__main__":
     print "Bool None"
 
     for variable, data in Boolean.variables.items():
-        if Boolean(varable).pack != data:
+        if Boolean(variable).pack != data:
             print "False pack", variable
 
     print "-" * 10
     print "test end"
-
-
-"""
-class Float:
-    @classmethod
-    def man(self, number):
-        return Decimal(number).scaleb(-self.exp(number)).normalize()
-
-    @classmethod
-    def exp(self, number):
-        (sign, digits, exponent) = Decimal(number).as_tuple()
-        return len(digits) + exponent - 1
-"""
