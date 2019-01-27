@@ -37,18 +37,18 @@ not_find = NotFound()
 
 class IntStrConverter:
     """
-    self.number | number to/from converting
-    self.data   | hex on int format
-    self.string | hex string
+    self.number   | number to/from converting
+    self.int_data | hex on int format
+    self.data     | hex string
     """
 
-    def convert_int_to_str(self):
-        hex_string = "{:x}".format(self.data)
+    def convert_int_to_data(self):
+        hex_string = "{:x}".format(self.int_data)
         if len(hex_string) % 2: hex_string = "0" + hex_string
-        self.string = hex_string.decode("hex")
+        self.data = hex_string.decode("hex")
 
-    def convert_str_to_int(self):
-        self.data = int(self.string.encode("hex"), 16)
+    def convert_data_to_int(self):
+        self.int_data = int(self.data.encode("hex"), 16)
 
 
 class Integer(IntStrConverter):
@@ -87,7 +87,7 @@ class Integer(IntStrConverter):
         if isinstance(variable, (int, long)):
             self.number = variable
         if isinstance(variable, str):
-            self.string = variable
+            self.data = variable
 
     def __check_number_size_is_correct(self):
         if self.number <= self.maximum_value and \
@@ -96,24 +96,24 @@ class Integer(IntStrConverter):
         raise Exception("requires -{value:x} <= number <= {value:x}".format(value=self.maximum_value))
 
     def __check_data_size_is_correct(self):
-        if len(self.string) >= self.length:
+        if len(self.data) >= self.length:
             return
         raise Exception("data length less then {}".format(self.length))
 
     def __make_mask(self, bit):
         return (1 << bit) << (8 * (self.length - 1))
 
-    def __put_sign_to_string(self):
-        self.data = 0
+    def __put_sign_to_data(self):
+        self.int_data = 0
         if self.number < 0:
-            self.data = 1 << self.bit_sign
+            self.int_data = 1 << self.bit_sign
 
     def __remove_number_sigh(self):
         if self.number < 0:
             self.number *= -1
 
     def __define_sigh_in_data(self):
-        if self.__make_mask(self.bit_sign) & self.data:
+        if self.__make_mask(self.bit_sign) & self.int_data:
             self.number *= -1
 
     def __define_number_length_in_bytes(self):
@@ -126,43 +126,43 @@ class Integer(IntStrConverter):
 
     def __set_bytes_length(self):
         self.__define_number_length_in_bytes()
-        self.data |= (self.length << self.bit_size_low)
-        self.data <<= (8 * ((2 ** self.length) - 1))
+        self.int_data |= (self.length << self.bit_size_low)
+        self.int_data <<= (8 * ((2 ** self.length) - 1))
 
     def __put_number(self):
-        self.data |= self.number
+        self.int_data |= self.number
 
     def __define_bytes_length(self):
         size_mask = (1 << self.bit_size_high) | (1 << self.bit_size_low)
-        self.length = 2 ** ((ord(self.string[0]) & size_mask) >> self.bit_size_low)
+        self.length = 2 ** ((ord(self.data[0]) & size_mask) >> self.bit_size_low)
 
-    def __get_string(self):
-        rest_part_of_string = self.string[self.length: ]
-        self.string = self.string[0: self.length]
-        return rest_part_of_string
+    def __get_data(self):
+        rest_part_of_data = self.data[self.length: ]
+        self.data = self.data[0: self.length]
+        return rest_part_of_data
 
     def __clean_number(self):
         sigh_mask = self.__make_mask(self.bit_sign)
         size_mask = self.__make_mask(self.bit_size_high) | self.__make_mask(self.bit_size_low)
         number_mask = ~(sigh_mask | size_mask) & (1 << 8 * self.length) - 1
-        self.number = self.data & number_mask
+        self.number = self.int_data & number_mask
 
     @property
     def pack(self):
         self.__check_number_size_is_correct()
-        self.__put_sign_to_string()
+        self.__put_sign_to_data()
         self.__remove_number_sigh()
         self.__set_bytes_length()
         self.__put_number()
-        self.convert_int_to_str()
-        return self.string
+        self.convert_int_to_data()
+        return self.data
 
     @property
     def unpack(self):
         self.__define_bytes_length()
         self.__check_data_size_is_correct()
-        rest_part_of_data = self.__get_string()
-        self.convert_str_to_int()
+        rest_part_of_data = self.__get_data()
+        self.convert_data_to_int()
         self.__clean_number()
         self.__define_sigh_in_data()
         return self.number, rest_part_of_data
@@ -173,82 +173,85 @@ class LongInteger(IntStrConverter):
         if isinstance(variable, (int, long)):
             self.number = variable
         if isinstance(variable, str):
-            self.string = variable
+            self.data = variable
 
     def __check_data_size_is_correct(self):
-        if len(self.string) >= self.length:
+        if len(self.data) >= self.length:
             return
         raise Exception("data length less then {}".format(self.length))
 
-    def __check_string_has_data(self):
-        if self.string != "":
+    def __check_data_has_data(self):
+        if self.data != "":
             return
         raise Exception("data is empty")
 
-    def __get_sigh(self):
+    def __get_number_sigh(self):
         self.sigh = 1
         if self.number < 0:
             self.sigh = -1
 
-    def __remove_number_sigh(self):
+    def __remove_int_data_sigh(self):
         if self.number < 0:
-            self.data *= -1
+            self.int_data *= -1
 
     def __get_sigh_from_length(self):
         self.sigh = 1
         if self.length < 0:
             self.sigh = -1
-            self.length *= -1
 
-    def __set_sigh_of_number(self):
-        self.number = self.data * self.sigh
-
-    def __define_length_in_bytes(self):
-        self.length = len(self.string)
-
-    def __put_sigh_to_string(self):
+    def __remove_sigh_from_length(self):
         self.length *= self.sigh
 
-    def __add_length(self):
-        self.string = Integer(self.length).pack + self.string
+    def __set_sigh_of_number(self):
+        self.number = self.int_data * self.sigh
 
-    def __get_length_in_string(self):
-        self.length, self.string = Integer(self.string).unpack
+    def __define_length_in_bytes(self):
+        self.length = len(self.data)
+
+    def __put_sigh_to_data(self):
+        self.length *= self.sigh
+
+    def __put_length_to_data(self):
+        self.data = Integer(self.length).pack + self.data
+
+    def __get_length_in_data(self):
+        self.length, self.data = Integer(self.data).unpack
 
     def __get_number(self):
-        rest_part_of_string = self.string[self.length: ]
-        self.string = self.string[0: self.length]
-        self.convert_str_to_int()
-        return rest_part_of_string
+        rest_part_of_data = self.data[self.length: ]
+        self.data = self.data[0: self.length]
+        self.convert_data_to_int()
+        return rest_part_of_data
 
     @property
     def pack(self):
-        self.data = self.number
-        self.__get_sigh()
-        self.__remove_number_sigh()
-        self.convert_int_to_str()
+        self.int_data = self.number
+        self.__get_number_sigh()
+        self.__remove_int_data_sigh()
+        self.convert_int_to_data()
         self.__define_length_in_bytes()
-        self.__put_sigh_to_string()
-        self.__add_length()
-        return self.string
+        self.__put_sigh_to_data()
+        self.__put_length_to_data()
+        return self.data
 
     @property
     def unpack(self):
-        self.__check_string_has_data()
-        self.__get_length_in_string()
+        self.__check_data_has_data()
+        self.__get_length_in_data()
         self.__get_sigh_from_length()
+        self.__remove_sigh_from_length()
         self.__check_data_size_is_correct()
-        rest_part_of_string = self.__get_number()
+        rest_part_of_data = self.__get_number()
         self.__set_sigh_of_number()
-        return self.number, rest_part_of_string
+        return self.number, rest_part_of_data
 
 
 class Float:
     def __init__(self, variable):
         if isinstance(variable, (float, Decimal)):
-            self.number = variable
+           self.number = variable
         if isinstance(variable, str):
-            self.string = variable
+            self.data = variable
 
     def __get_mantissa_and_exponent_from_number(self):
         self.__check_exponent()
@@ -274,17 +277,17 @@ class Float:
         else:
             self.exponent = int(self.exponent)
 
-    def __add_exponent_to_string(self):
-        self.string = Integer(self.exponent).pack
+    def __put_exponent_to_data(self):
+        self.data = Integer(self.exponent).pack
 
-    def __add_mantissa_to_string(self):
-        self.string += Integer(self.mantissa).pack
+    def __put_mantissa_to_data(self):
+        self.data += Integer(self.mantissa).pack
 
-    def __get_exponent_from_string(self):
-        self.exponent, self.string = Integer(self.string).unpack
+    def __get_exponent_from_data(self):
+        self.exponent, self.data = Integer(self.data).unpack
 
-    def __get_mantissa_from_string(self):
-        self.mantissa, self.string = Integer(self.string).unpack
+    def __get_mantissa_from_data(self):
+        self.mantissa, self.data = Integer(self.data).unpack
 
     def __build_float(self):
         self.number = float(self.mantissa * 10 ** self.exponent)
@@ -292,16 +295,54 @@ class Float:
     @property
     def pack(self):
         self.__get_mantissa_and_exponent_from_number()
-        self.__add_exponent_to_string()
-        self.__add_mantissa_to_string()
-        return self.string
+        self.__put_exponent_to_data()
+        self.__put_mantissa_to_data()
+        return self.data
 
     @property
     def unpack(self):
-        self.__get_exponent_from_string()
-        self.__get_mantissa_from_string()
+        self.__get_exponent_from_data()
+        self.__get_mantissa_from_data()
         self.__build_float()
-        return self.number, self.string
+        return self.number, self.data
+
+class String:
+    def __init__(self, variable="", data=""):
+        if data == "":
+            self.variable = variable
+        else:
+            self.data = data
+
+    def __check_variable_size_is_correct(self):
+        if len(self.data) >= self.length:
+            return
+        raise Exception("data length less then {}".format(self.length))
+
+    def __put_length_to_data(self):
+        self.data = Integer(len(self.variable)).pack
+
+    def __put_variablr_to_data(self):
+        self.data += self.variable
+
+    def __get_length_in_data(self):
+        self.length, self.data = Integer(self.data).unpack
+
+    def __get_variable_from_data(self):
+        self.variable = self.data[0: self.length]
+        self.data = self.data[self.length: ]
+
+    @property
+    def pack(self):
+        self.__put_length_to_data()
+        self.__put_variablr_to_data()
+        return self.data
+
+    @property
+    def unpack(self):
+        self.__get_length_in_data()
+        self.__check_variable_size_is_correct()
+        self.__get_variable_from_data()
+        return self.variable, self.data
 
 
 class Boolean:
@@ -315,7 +356,7 @@ class Boolean:
         if isinstance(variable, (bool, type(None))):
             self.variable = variable
         if isinstance(variable, str):
-            self.string = string
+            self.data = variable
 
     @property
     def pack(self):
@@ -324,18 +365,24 @@ class Boolean:
     @property
     def unpack(self):
         self.variable = self.variables.keys()[
-            self.variables.values().index(self.string[0])
+            self.variables.values().index(self.data[0])
         ]
-        rest_string = data[1: ]
-        return self.variable, rest_string
+        rest_part_of_data = self.data[1: ]
+        return self.variable, rest_part_of_data
 
 
 class List:
-    def pack(self, numer):
-        pass
+    def __init__(self, variable):
+        if isinstance(variable, list):
+            self.variable = variable
+        if isinstance(variable, str):
+            self.string = variable
 
-    def unpack(self, data):
-        pass
+    def pack(self):
+        return self.map, self.string
+
+    def unpack(self):
+        return self.variable
 
 
 class Dictionary:
@@ -586,10 +633,10 @@ if __name__ == "__main__":
     for number, data in pack_test_cases:
         if Integer(number).pack != data:
             print "pack", hex(number)
-        unpack_int, rest_data = Integer(data+additional_data).unpack
+        unpack_int, rest_part_of_data = Integer(data+additional_data).unpack
         if unpack_int != number:
             print "unpack", hex(number)
-        if rest_data != additional_data:
+        if rest_part_of_data != additional_data:
             print "rest data", hex(number)
 
     try:
@@ -611,16 +658,16 @@ if __name__ == "__main__":
     if LongInteger(pack_test[0]).pack != pack_test[1]:
          print "False pack", hex(pack_test[0])
 
-    long_int, rest_data =  LongInteger(pack_test[1]+additional_data).unpack
-    if long_int != pack_test[0] or rest_data != additional_data:
+    long_int, rest_part_of_data =  LongInteger(pack_test[1]+additional_data).unpack
+    if long_int != pack_test[0] or rest_part_of_data != additional_data:
         print "False unpack", hex(pack_test[0])
 
     pack_test = [-0x2ffffffffffffffff, "\x89\x02\xff\xff\xff\xff\xff\xff\xff\xff"]
     if LongInteger(pack_test[0]).pack != pack_test[1]:
         print "False pack", hex(pack_test[0])
 
-    long_int, rest_data =  LongInteger(pack_test[1]+additional_data).unpack
-    if long_int != pack_test[0] or rest_data != additional_data:
+    long_int, rest_part_of_data =  LongInteger(pack_test[1]+additional_data).unpack
+    if long_int != pack_test[0] or rest_part_of_data != additional_data:
         print "False unpack", hex(pack_test[0]), hex(long_int)
 
     try:
@@ -654,10 +701,10 @@ if __name__ == "__main__":
     for number, data in pack_test:
         if Float(number).pack != data:
             print "False pack", number
-        float_number, rest_data = Float(data+additional_data).unpack
+        float_number, rest_part_of_data = Float(data+additional_data).unpack
         if str(float_number) != str(number):
             print "False unpack", number
-        if rest_data != additional_data:
+        if rest_part_of_data != additional_data:
             print "False rest data"
 
     print "-" * 10
@@ -666,6 +713,30 @@ if __name__ == "__main__":
     for variable, data in Boolean.variables.items():
         if Boolean(variable).pack != data:
             print "False pack", variable
+
+        unpack_variable, rest_part_of_data = Boolean(data+additional_data).unpack
+        if unpack_variable != variable:
+            print "False unpack", number
+        if rest_part_of_data != additional_data:
+            print "False rest data"
+
+    print "-" * 10
+    print "String"
+
+    variables = [
+        ['123qweQWE', '\x09123qweQWE'],
+        ['йцу123qwe', '\x0cйцу123qwe'],
+    ]
+
+    for variable, data in variables:
+        if String(variable).pack != data:
+            print "False pack", [variable, String(variable).pack]
+
+        unpack_variable, rest_part_of_data = String(data=data+additional_data).unpack
+        if unpack_variable != variable:
+            print "False unpack", number
+        if rest_part_of_data != additional_data:
+            print "False rest data"
 
     print "-" * 10
     print "test end"
