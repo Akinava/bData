@@ -155,7 +155,8 @@ class Integer(IntStrConverter):
         self.__set_bytes_length()
         self.__put_number()
         self.convert_int_to_data()
-        return self.data
+        self.map = Type(self).pack
+        return self.map, self.data
 
     @property
     def unpack(self):
@@ -212,7 +213,8 @@ class LongInteger(IntStrConverter):
         self.length *= self.sigh
 
     def __put_length_to_data(self):
-        self.data = Integer(self.length).pack + self.data
+        _, length_pack = Integer(self.length).pack
+        self.data = length_pack + self.data
 
     def __get_length_in_data(self):
         self.length, self.data = Integer(self.data).unpack
@@ -232,7 +234,8 @@ class LongInteger(IntStrConverter):
         self.__define_length_in_bytes()
         self.__put_sigh_to_data()
         self.__put_length_to_data()
-        return self.data
+        self.map = Type(self).pack
+        return self.map, self.data
 
     @property
     def unpack(self):
@@ -278,10 +281,12 @@ class Float:
             self.exponent = int(self.exponent)
 
     def __put_exponent_to_data(self):
-        self.data = Integer(self.exponent).pack
+        _, exponent_in_data_format = Integer(self.exponent).pack
+        self.data = exponent_in_data_format
 
     def __put_mantissa_to_data(self):
-        self.data += Integer(self.mantissa).pack
+        _, mantissa_in_data_format = Integer(self.mantissa).pack
+        self.data += mantissa_in_data_format
 
     def __get_exponent_from_data(self):
         self.exponent, self.data = Integer(self.data).unpack
@@ -297,7 +302,8 @@ class Float:
         self.__get_mantissa_and_exponent_from_number()
         self.__put_exponent_to_data()
         self.__put_mantissa_to_data()
-        return self.data
+        self.map = Type(self).pack
+        return self.map, self.data
 
     @property
     def unpack(self):
@@ -319,7 +325,8 @@ class String:
         raise Exception("data length less then {}".format(self.length))
 
     def __put_length_to_data(self):
-        self.data = Integer(len(self.variable)).pack
+        _, length_in_data_format = Integer(len(self.variable)).pack
+        self.data = length_in_data_format
 
     def __put_variablr_to_data(self):
         self.data += self.variable
@@ -335,7 +342,8 @@ class String:
     def pack(self):
         self.__put_length_to_data()
         self.__put_variablr_to_data()
-        return self.data
+        self.map = Type(self).pack
+        return self.map, self.data
 
     @property
     def unpack(self):
@@ -360,7 +368,8 @@ class Boolean:
 
     @property
     def pack(self):
-        return self.variables[self.variable]
+        self.map = Type(self).pack
+        return self.map, self.variables[self.variable]
 
     @property
     def unpack(self):
@@ -371,21 +380,45 @@ class Boolean:
         return self.variable, rest_part_of_data
 
 
-class List:
+class List(IntStrConverter):
+    # TODO
+    # bit
+    #   7 unequeal/equal objects    0/1
+    #   6 bytes len objects off/on  0/1
+    #   5 bytes len in            map/data
+    #   4 address each NN objects (for long List) off/of 0/1
+    #     full length of List
+
+    bit_length_high = 3
+
     def __init__(self, variable):
         if isinstance(variable, list):
             self.variable = variable
         if isinstance(variable, str):
-            self.string = variable
+            self.data = variable
+
+    def __pack_item(self, item):
+        item_type = Type(item).type
+        self.map += item_type.pack
+        self.data += item_type(item).pack
 
     def pack(self):
-        return self.map, self.string
+        self.map, self.data = "", ""
+        for items in self.variable:
+            self.__pack_item(items)
+        return self.map, self.data
 
     def unpack(self):
         return self.variable
 
 
 class Dictionary:
+    """
+    equal objects   = 1
+    unequal objects = 0
+    bit             = 7
+    """
+
     def pack(self, numer):
         pass
 
@@ -393,7 +426,7 @@ class Dictionary:
         pass
 
 
-class CONTRACTION:
+class Contraction:
     def __init__(self, *args):
         self.contractions = []
         for item in args:
@@ -408,6 +441,52 @@ class CONTRACTION:
     def unpack(self, item):
         pass
 
+
+class Type(IntStrConverter):
+    types_mapping = (
+        (int,        Integer),
+        (long,       Integer),
+        (long,       LongInteger),
+        (float,      Float),
+        (str,        String),
+        (bool,       Boolean),
+        (type(None), Boolean),
+        (list,       List),
+        # set:
+        # tuple:
+        (dict,       Dictionary),
+    )
+
+    types_index = (
+        Integer,
+        LongInteger,
+        Float,
+        String,
+        Boolean,
+    )
+
+    def __init__(self, variable):
+
+        if isinstance(variable, str):
+            self.data = variable
+        else:
+            self.__define_type(variable)
+
+    def __define_type(self, variable):
+        for real_type, data_type in self.types_mapping:
+            if not isinstance(variable, real_type) and not isinstance(variable, data_type):
+                continue
+            self.int_data = self.types_index.index(data_type)
+            self.convert_int_to_data()
+            break
+
+    @property
+    def pack(self):
+        return self.data
+
+    @property
+    def unpack(self):
+        pass
 
 
 #=============================================================================#
@@ -631,13 +710,14 @@ if __name__ == "__main__":
     ]
 
     for number, data in pack_test_cases:
-        if Integer(number).pack != data:
-            print "pack", hex(number)
+        _, pack_int = Integer(number).pack
+        if pack_int != data:
+            print "False pack", hex(number), Integer(number).pack
         unpack_int, rest_part_of_data = Integer(data+additional_data).unpack
         if unpack_int != number:
-            print "unpack", hex(number)
+            print "False unpack", hex(number)
         if rest_part_of_data != additional_data:
-            print "rest data", hex(number)
+            print "False rest data", hex(number)
 
     try:
         Integer(0x2fffffffffffffff).pack
@@ -655,7 +735,8 @@ if __name__ == "__main__":
     print "LongInteger"
 
     pack_test = [0x2ffffffffffffffff, "\x09\x02\xff\xff\xff\xff\xff\xff\xff\xff"]
-    if LongInteger(pack_test[0]).pack != pack_test[1]:
+    _, pack_int = LongInteger(pack_test[0]).pack
+    if pack_int != pack_test[1]:
          print "False pack", hex(pack_test[0])
 
     long_int, rest_part_of_data =  LongInteger(pack_test[1]+additional_data).unpack
@@ -663,7 +744,8 @@ if __name__ == "__main__":
         print "False unpack", hex(pack_test[0])
 
     pack_test = [-0x2ffffffffffffffff, "\x89\x02\xff\xff\xff\xff\xff\xff\xff\xff"]
-    if LongInteger(pack_test[0]).pack != pack_test[1]:
+    _, pack_int = LongInteger(pack_test[0]).pack
+    if pack_int != pack_test[1]:
         print "False pack", hex(pack_test[0])
 
     long_int, rest_part_of_data =  LongInteger(pack_test[1]+additional_data).unpack
@@ -699,8 +781,9 @@ if __name__ == "__main__":
     ]
 
     for number, data in pack_test:
-        if Float(number).pack != data:
-            print "False pack", number
+        _, pack_float = Float(number).pack
+        if pack_float != data:
+            print "False pack", number, Float(number).pack
         float_number, rest_part_of_data = Float(data+additional_data).unpack
         if str(float_number) != str(number):
             print "False unpack", number
@@ -711,7 +794,8 @@ if __name__ == "__main__":
     print "Bool None"
 
     for variable, data in Boolean.variables.items():
-        if Boolean(variable).pack != data:
+        _, pack_bool = Boolean(variable).pack
+        if pack_bool != data:
             print "False pack", variable
 
         unpack_variable, rest_part_of_data = Boolean(data+additional_data).unpack
@@ -725,7 +809,26 @@ if __name__ == "__main__":
 
     variables = [
         ['123qweQWE', '\x09123qweQWE'],
-        ['йцу123qwe', '\x0cйцу123qwe'],
+        ['йух123qwe', '\x0cйух123qwe'],
+    ]
+
+    for variable, data in variables:
+        _, pack_str = String(variable).pack
+        if pack_str != data:
+            print "False pack", [variable, String(variable).pack]
+
+        unpack_variable, rest_part_of_data = String(data=data+additional_data).unpack
+        if unpack_variable != variable:
+            print "False unpack", number
+        if rest_part_of_data != additional_data:
+            print "False rest data"
+
+    """
+    print "-" * 10
+    print "List"
+
+    variables = [
+        [1, 2, 3], '\x09123qweQWE'],
     ]
 
     for variable, data in variables:
@@ -737,6 +840,7 @@ if __name__ == "__main__":
             print "False unpack", number
         if rest_part_of_data != additional_data:
             print "False rest data"
+    """
 
     print "-" * 10
     print "test end"
