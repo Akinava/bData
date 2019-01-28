@@ -35,60 +35,89 @@ class NotFound:
 not_find = NotFound()
 
 
+class Byte:
+    def __init__(self):
+        self.variable = 0
+
+    def get(self):
+        return self.variable
+
+    def set_bit(bit_number):
+        self.variable |= 1 << bit_number
+
+    def unset_bit(bit_number):
+        self.variable &= ~(1 << bit_number) & (1 << 8) - 1
+
+    def get_mask(self, mask_size_in_byte=1):
+        return ~self.variable & (1 << 8 * mask_size_in_byte) - 1
+
+    def shift_byte(self, shift_size):
+        self.variable <<= 8 * shift_size
+
+
 class IntStrConverter:
     """
     self.number   | number to/from converting
     self.int_data | hex on int format
     self.data     | hex string
     """
+    def __init__(self, variable):
+        self.variable = variable
 
     def convert_int_to_data(self):
-        hex_string = "{:x}".format(self.int_data)
+        hex_string = "{:x}".format(self.variable)
         if len(hex_string) % 2: hex_string = "0" + hex_string
-        self.data = hex_string.decode("hex")
+        return hex_string.decode("hex")
 
     def convert_data_to_int(self):
-        self.int_data = int(self.data.encode("hex"), 16)
+        return int(self.variable.encode("hex"), 16)
 
 
 class Integer(IntStrConverter):
     """
-    types:
-    small int
-    certain length big int
-
-    0b00000000
-      sss
-      iii
-      gzz
-      nee
-
-    size bits:
-    00 1 byte  +/- 0x1f
-    01 2 bytes +/- 0x1fff
-    10 4 bytes +/- 0x1fffffff
-    11 8 bytes +/- 0x1fffffffffffffff
+    # schema bits
+    0 - Integer 1 byte by schema
+    1 - Integer 2 byte by schema
+    2 - Integer 4 byte by schema
+    3 - Integer 8 byte by schema
+    4 - Integer defined size in chema
+    5 - Integet size in data
+    6 - reserved
+    7 - reserved
+    """
+    type_low_bit = 2
+    """
+    # data bits
+    data_sigh_bit = 7
+    # in case shema 5
+    data_size_bits = 6, 5, 4
     """
 
-    # bit
-    bit_sign = 7
-    bit_size_high = 6
-    bit_size_low = 5
-    bit_significant_high = 4
-    bit_significant_low = 0
-
-    # byte size
-    maximum_bytes = 8
-    first_byte_maxixum_value = (1 << (bit_significant_high + 1)) - 1
+    """
+    first_byte_maxixum_value = (1 << (data_significant_high_bit + 1)) - 1
     maximum_value = (first_byte_maxixum_value << (8 * (maximum_bytes - 1))) + \
                              (1 << (8 * (maximum_bytes - 1))) - 1
-
-    def __init__(self, variable):
+    """
+    def __init__(self, variable, length_in_schema=True):
         if isinstance(variable, (int, long)):
             self.number = variable
         if isinstance(variable, str):
             self.data = variable
 
+    def __make_schema(self):
+        self.schema = Type(self).type_index
+        self.__define_length_in_bytes()
+
+
+    def __define_length_in_bytes(self):
+        maximum_value_in_first_byte = 0
+
+
+    @property
+    def pack(self):
+        return self.__make_schema(), self.__make_data()
+
+    """
     def __check_number_size_is_correct(self):
         if self.number <= self.maximum_value and \
            self.number >= -1 * self.maximum_value:
@@ -146,7 +175,8 @@ class Integer(IntStrConverter):
         size_mask = self.__make_mask(self.bit_size_high) | self.__make_mask(self.bit_size_low)
         number_mask = ~(sigh_mask | size_mask) & (1 << 8 * self.length) - 1
         self.number = self.int_data & number_mask
-
+    """
+    """
     @property
     def pack(self):
         self.__check_number_size_is_correct()
@@ -167,6 +197,7 @@ class Integer(IntStrConverter):
         self.__clean_number()
         self.__define_sigh_in_data()
         return self.number, rest_part_of_data
+    """
 
 
 class LongInteger(IntStrConverter):
@@ -268,9 +299,9 @@ class Float:
 
     def __check_exponent(self):
         if "e" in str(self.number):
-            self.mantissa, self.exponent = str(number).split("e")
+            self.mantissa, self.exponent = str(self.number).split("e")
         else:
-            self.mantissa = str(number)
+            self.mantissa = str(self.number)
             self.exponent = "0"
 
     def __check_dot(self):
@@ -383,9 +414,9 @@ class Boolean:
 class List(IntStrConverter):
     # TODO
     # bit
-    #   7 unequeal/equal objects    0/1
-    #   6 bytes len objects off/on  0/1
-    #   5 bytes len in            map/data
+    #   7 unequeal/equal type objects                    0/1
+    #   6 bytes len objects off/on                       0/1
+    #   5 bytes len in map/data                          0/1
     #   4 address each NN objects (for long List) off/of 0/1
     #     full length of List
 
@@ -402,12 +433,14 @@ class List(IntStrConverter):
         self.map += item_type.pack
         self.data += item_type(item).pack
 
+    @property
     def pack(self):
         self.map, self.data = "", ""
         for items in self.variable:
             self.__pack_item(items)
         return self.map, self.data
 
+    @property
     def unpack(self):
         return self.variable
 
@@ -443,10 +476,15 @@ class Contraction:
 
 
 class Type(IntStrConverter):
+    """
+    # type bits mark as 1
+    11100000
+    """
+    type_low_bit = 5
+
     types_mapping = (
         (int,        Integer),
         (long,       Integer),
-        (long,       LongInteger),
         (float,      Float),
         (str,        String),
         (bool,       Boolean),
@@ -459,10 +497,12 @@ class Type(IntStrConverter):
 
     types_index = (
         Integer,
-        LongInteger,
         Float,
         String,
         Boolean,
+        List,
+        Dictionary,
+        Contraction,
     )
 
     def __init__(self, variable):
@@ -481,8 +521,14 @@ class Type(IntStrConverter):
             break
 
     @property
+    def type_index(self):
+        self.int_data << self.type_low_bit
+
+    """
+    @property
     def pack(self):
         return self.data
+    """
 
     @property
     def unpack(self):
@@ -688,19 +734,20 @@ class BDATA:
         return js
 
 
-if __name__ == "__main__":
+def tests():
     print "test start"
 
+    VARIABLE, SCHEMA, DATA = 0, 1, 2
     additional_data = "\xff"
 
     print "-" * 10
     print "Integer"
 
     pack_test_cases = [
-        [0, "\x00"],
-        [0x1f, "\x1f"],
-        [-0x1f, "\x9f"],
-        [0x1ff, "\x21\xff"],
+        [0, "\x00", "\x00"],
+        [0x0f, "\x00", "\x0f"],
+        [-0x0f, "\x00", "\x8f"],
+        [0xfff, "\x21\xff"],
         [0x1fff, "\x3f\xff"],
         [-0x1fff, "\xbf\xff"],
         [0x1fffffff, "\x5f\xff\xff\xff"],
@@ -719,6 +766,7 @@ if __name__ == "__main__":
         if rest_part_of_data != additional_data:
             print "False rest data", hex(number)
 
+    """
     try:
         Integer(0x2fffffffffffffff).pack
         print "False pack exception"
@@ -823,24 +871,31 @@ if __name__ == "__main__":
         if rest_part_of_data != additional_data:
             print "False rest data"
 
-    """
+
     print "-" * 10
     print "List"
 
     variables = [
-        [1, 2, 3], '\x09123qweQWE'],
+        #              map                 data
+        [[1, 2, "3"], "\x05\x03\x00\x00\x03\x01\x02\x01\x33"],
     ]
 
     for variable, data in variables:
-        if String(variable).pack != data:
-            print "False pack", [variable, String(variable).pack]
+        print variable
+        data_map, data = List(variable).pack
+        if data_map + data != data:
+            print "False pack", variable, (data_map + data).encode("hex")
 
-        unpack_variable, rest_part_of_data = String(data=data+additional_data).unpack
+        unpack_variable, rest_part_of_data = List(data+additional_data).unpack
         if unpack_variable != variable:
-            print "False unpack", number
+            print "False unpack", variable, unpack_variable
         if rest_part_of_data != additional_data:
             print "False rest data"
     """
 
     print "-" * 10
     print "test end"
+
+
+if __name__ == "__main__":
+    tests()
