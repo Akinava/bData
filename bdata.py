@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import json
 from decimal import Decimal
+from collections import namedtuple
 
 
 __author__ = "Akinava"
@@ -74,23 +75,27 @@ class IntStrConverter:
 
 
 class Integer(IntStrConverter):
-    """
-    # schema bits
-    0 - Integer 1 byte by schema
-    1 - Integer 2 byte by schema
-    2 - Integer 4 byte by schema
-    3 - Integer 8 byte by schema
-    4 - Integer defined size in chema
-    5 - Integet size in data
-    6 - reserved
-    7 - reserved
-    """
-    type_low_bit = 2
-    """
+    schema_low_mapping_bit = 0
+    schema_option = namedtuple(
+        'schema', [
+            'bytes_length',
+            'lenth_in_schema',
+    ])
+
+    schema_bits_mapping = {
+        0: schema_option(1, True),
+        1: schema_option(2, True),
+        2: schema_option(4, True),
+        3: schema_option(8, True),
+        4: schema_option(0, True),
+        5: schema_option(0, False),
+        # 6: reserved,
+        # 7: reserved,
+    }
+
     # data bits
     data_sigh_bit = 7
-    # in case shema 5
-    data_size_bits = 6, 5, 4
+    data_low_size_bits = 4
     """
 
     """
@@ -103,9 +108,12 @@ class Integer(IntStrConverter):
             self.number = variable
         if isinstance(variable, str):
             self.data = variable
+        self.length_in_schema = length_in_schema
 
     def __make_schema(self):
         self.schema = Type(self).type_index
+        if self.length_in_schema:
+
         self.__define_length_in_bytes()
 
 
@@ -175,8 +183,7 @@ class Integer(IntStrConverter):
         size_mask = self.__make_mask(self.bit_size_high) | self.__make_mask(self.bit_size_low)
         number_mask = ~(sigh_mask | size_mask) & (1 << 8 * self.length) - 1
         self.number = self.int_data & number_mask
-    """
-    """
+
     @property
     def pack(self):
         self.__check_number_size_is_correct()
@@ -197,7 +204,6 @@ class Integer(IntStrConverter):
         self.__clean_number()
         self.__define_sigh_in_data()
         return self.number, rest_part_of_data
-    """
 
 
 class LongInteger(IntStrConverter):
@@ -447,9 +453,9 @@ class List(IntStrConverter):
 
 class Dictionary:
     """
-    equal objects   = 1
-    unequal objects = 0
-    bit             = 7
+    equal_objects =   1
+    unequal_objects = 0
+    bit =             7
     """
 
     def pack(self, numer):
