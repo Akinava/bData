@@ -75,6 +75,7 @@ class IntStrConverter:
 
 
 class Integer(IntStrConverter):
+
     schema_low_mapping_bit = 0
     schema_option = namedtuple(
         'schema', [
@@ -93,16 +94,16 @@ class Integer(IntStrConverter):
         # 7: reserved,
     }
 
-    # data bits
     data_sigh_bit = 7
     data_low_size_bits = 4
-    """
+
 
     """
     first_byte_maxixum_value = (1 << (data_significant_high_bit + 1)) - 1
     maximum_value = (first_byte_maxixum_value << (8 * (maximum_bytes - 1))) + \
                              (1 << (8 * (maximum_bytes - 1))) - 1
     """
+
     def __init__(self, variable, length_in_schema=True):
         if isinstance(variable, (int, long)):
             self.number = variable
@@ -112,13 +113,14 @@ class Integer(IntStrConverter):
 
     def __make_schema(self):
         self.schema = Type(self).type_index
-        if self.length_in_schema:
-
         self.__define_length_in_bytes()
-
 
     def __define_length_in_bytes(self):
         maximum_value_in_first_byte = 0
+        if length_in_schema:
+            maximum_value_in_first_byte &= Byte().set_bit(data_sigh_bit)
+
+        print bin(maximum_value_in_first_byte)
 
 
     @property
@@ -204,6 +206,7 @@ class Integer(IntStrConverter):
         self.__clean_number()
         self.__define_sigh_in_data()
         return self.number, rest_part_of_data
+    """
 
 
 class LongInteger(IntStrConverter):
@@ -743,6 +746,9 @@ class BDATA:
 def tests():
     print "test start"
 
+    Integer(0).pack
+    """
+
     VARIABLE, SCHEMA, DATA = 0, 1, 2
     additional_data = "\xff"
 
@@ -750,9 +756,9 @@ def tests():
     print "Integer"
 
     pack_test_cases = [
-        [0, "\x00", "\x00"],
-        [0x0f, "\x00", "\x0f"],
-        [-0x0f, "\x00", "\x8f"],
+        {"variable": 0, "schema": "\x00", "data":"\x00"},
+        {"variable": 0x0f, "schema": "\x00", "data": "\x0f"},
+        {"variable": -0x0f, "schema": "\x00", "data": "\x8f"},
         [0xfff, "\x21\xff"],
         [0x1fff, "\x3f\xff"],
         [-0x1fff, "\xbf\xff"],
@@ -762,16 +768,19 @@ def tests():
         [-0x1fffffffffffffff, "\xff\xff\xff\xff\xff\xff\xff\xff"],
     ]
 
-    for number, data in pack_test_cases:
-        _, pack_int = Integer(number).pack
-        if pack_int != data:
-            print "False pack", hex(number), Integer(number).pack
-        unpack_int, rest_part_of_data = Integer(data+additional_data).unpack
-        if unpack_int != number:
-            print "False unpack", hex(number)
+    for test_case in pack_test_cases:
+        schema, data = Integer(test_case["variable"]).pack
+        if test_case["schema"] != schema:
+            print "False schema", hex(test_case["variable"])
+        if test_case["data"]  != data:
+            print "False data", hex(test_case["variable"])
+
+        variable, rest_part_of_data = Integer(test_case["schema"] + tast_case["data"] + additional_data).unpack
+        if variable != test_case["variable"]:
+            print "False unpack variable", hex(number)
         if rest_part_of_data != additional_data:
             print "False rest data", hex(number)
-
+    """
     """
     try:
         Integer(0x2fffffffffffffff).pack
