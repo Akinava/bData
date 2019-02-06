@@ -37,20 +37,20 @@ not_find = NotFound()
 
 
 class Byte:
-    def __init__(self):
-        self.variable = 0
+    def __init__(self, variable=0):
+        self.variable = variable
 
     def get(self):
         return self.variable
 
-    def set_bit(bit_number):
+    def set_bit(self, bit_number):
         self.variable |= 1 << bit_number
 
-    def unset_bit(bit_number):
+    def unset_bit(self, bit_number):
         self.variable &= ~(1 << bit_number) & (1 << 8) - 1
 
-    def get_mask(self, mask_size_in_byte=1):
-        return ~self.variable & (1 << 8 * mask_size_in_byte) - 1
+    def make_mask(self, mask_size_in_byte=1):
+        self.variable = ~self.variable & (1 << 8 * mask_size_in_byte) - 1
 
     def shift_byte(self, shift_size):
         self.variable <<= 8 * shift_size
@@ -66,7 +66,7 @@ class IntStrConverter:
         self.variable = variable
 
     def convert_int_to_data(self):
-        hex_string = "{:x}".format(self.variable)
+        hex_string = "{:x}".format(self.int_data)
         if len(hex_string) % 2: hex_string = "0" + hex_string
         return hex_string.decode("hex")
 
@@ -95,8 +95,11 @@ class Integer(IntStrConverter):
     }
 
     data_sigh_bit = 7
-    data_low_size_bits = 4
+    data_lenth_is_custom_defined = 6  # if this bit set as 1 no need in data_high_size_bit and data_low_size_bits
+    data_high_length_bit = 5
+    data_low_length_bits = 4
 
+    max_stock_length = max(x.bytes_length for x in schema_bits_mapping.values())
 
     """
     first_byte_maxixum_value = (1 << (data_significant_high_bit + 1)) - 1
@@ -116,12 +119,23 @@ class Integer(IntStrConverter):
         self.__define_length_in_bytes()
 
     def __define_length_in_bytes(self):
-        maximum_value_in_first_byte = 0
-        if length_in_schema:
-            maximum_value_in_first_byte &= Byte().set_bit(data_sigh_bit)
+        maximum_value_in_first_byte = self.__maximum_value_in_first_byte()
 
-        print bin(maximum_value_in_first_byte)
+    def __maximum_value_in_first_byte(self):
+        byte = Byte()
+        byte.set_bit(self.data_sigh_bit)
 
+        if self.length_in_schema:
+            byte.make_mask()
+            return byte.get()
+
+        byte.set_bit(self.data_lenth_is_custom_defined)
+
+
+        #byte.set_bit(self.data_high_size_bit)
+        #byte.set_bit(self.data_low_size_bits)
+        #byte.make_mask()
+        print bin(byte.get())
 
     @property
     def pack(self):
@@ -746,7 +760,9 @@ class BDATA:
 def tests():
     print "test start"
 
-    Integer(0).pack
+    #Integer(0).pack
+    Integer(0, length_in_schema=False).pack
+
     """
 
     VARIABLE, SCHEMA, DATA = 0, 1, 2
