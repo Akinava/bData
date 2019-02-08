@@ -2,8 +2,6 @@
 # -*- coding: utf-8 -*-
 import json
 from decimal import Decimal
-from collections import namedtuple
-
 
 __author__ = "Akinava"
 __author_email__ = "akinava@gmail.com"
@@ -75,37 +73,41 @@ class IntStrConverter:
 
 
 class Integer(IntStrConverter):
+    """
+    schema
+    765 bits
+    000 reserverd for type bits
 
-    schema_low_mapping_bit = 0
-    schema_option = namedtuple(
-        'schema', [
-            'bytes_length',
-            'lenth_in_schema',
-    ])
+     432 bits
+    ~000~ stock length 1 byte
+    ~001~ stock length 2 byte
+    ~010~ stock length 4 byte
+    ~011~ stock length 8 byte
+    ~10~  custom length define aftert his bits
+    ~11~  custom length define in data
 
-    schema_bits_mapping = {
-        0: schema_option(1, True),
-        1: schema_option(2, True),
-        2: schema_option(4, True),
-        3: schema_option(8, True),
-        4: schema_option(0, True),
-        5: schema_option(0, False),
-        # 6: reserved,
-        # 7: reserved,
-    }
+    10 bits
+    00 reserved bits
+    """
+    schema_length_is_custom_bit = 4
+    schema_length_place_bit = schema_length_is_custom_bit - 1
+    schema_length_low_bit = schema_length_is_custom_bit - 2
+
+    """
+    data
+    7 reserved for sigh bit
+    6 define/undefine custom length depends on bit 4 in schema
+    5 length of number/length depends on bit 6
+    4 length of number/length depends on bit 6
+    rest part number or length of number custom length
+    """
 
     data_sigh_bit = 7
-    data_lenth_is_custom_defined = 6  # if this bit set as 1 no need in data_high_size_bit and data_low_size_bits
-    data_high_length_bit = 5
-    data_low_length_bits = 4
+    data_length_is_custom_bit = 6  # if this bit set as 1 no need in data_high_size_bit and data_low_size_bits
+    data_length_low_bit = 4
 
-    max_stock_length = max(x.bytes_length for x in schema_bits_mapping.values())
-
-    """
-    first_byte_maxixum_value = (1 << (data_significant_high_bit + 1)) - 1
-    maximum_value = (first_byte_maxixum_value << (8 * (maximum_bytes - 1))) + \
-                             (1 << (8 * (maximum_bytes - 1))) - 1
-    """
+    stock_length_bits_value = range(4)
+    stock_length_list = map(lambda x: 2 ** x, stock_length_bits_value)
 
     def __init__(self, variable, length_in_schema=True):
         if isinstance(variable, (int, long)):
@@ -117,9 +119,28 @@ class Integer(IntStrConverter):
     def __make_schema(self):
         self.schema = Type(self).type_index
         self.__define_length_in_bytes()
+        if length_in_schema:
+
+        print "self.length", self.length
 
     def __define_length_in_bytes(self):
-        maximum_value_in_first_byte = self.__maximum_value_in_first_byte()
+        maximum_value = self.__maximum_value_in_first_byte()
+        self.length = 0
+        for length in self.stock_length_list:
+            if self.__check_variable_is_compliance_border(self.number, maximum_value):
+                self.length = length
+                return
+            first_part = Byte(maximum_value)
+            first_part.shift_byte(length)
+            maximum_value = first_part.get()
+            last_part = Byte()
+            last_part.make_mask(length)
+            maximum_value |= last_part.get()
+
+    def __check_variable_is_compliance_border(self, variable, border):
+        if -border <= variable <= border:
+            return True
+        return False
 
     def __maximum_value_in_first_byte(self):
         byte = Byte()
@@ -129,98 +150,15 @@ class Integer(IntStrConverter):
             byte.make_mask()
             return byte.get()
 
-        byte.set_bit(self.data_lenth_is_custom_defined)
-
-
-        #byte.set_bit(self.data_high_size_bit)
-        #byte.set_bit(self.data_low_size_bits)
-        #byte.make_mask()
-        print bin(byte.get())
+        byte.set_bit(self.data_length_is_custom_bit)
+        byte.set_bit(self.data_length_high_bit)
+        byte.set_bit(self.data_length_low_bit)
+        byte.make_mask()
+        return byte.get()
 
     @property
     def pack(self):
         return self.__make_schema(), self.__make_data()
-
-    """
-    def __check_number_size_is_correct(self):
-        if self.number <= self.maximum_value and \
-           self.number >= -1 * self.maximum_value:
-            return
-        raise Exception("requires -{value:x} <= number <= {value:x}".format(value=self.maximum_value))
-
-    def __check_data_size_is_correct(self):
-        if len(self.data) >= self.length:
-            return
-        raise Exception("data length less then {}".format(self.length))
-
-    def __make_mask(self, bit):
-        return (1 << bit) << (8 * (self.length - 1))
-
-    def __put_sign_to_data(self):
-        self.int_data = 0
-        if self.number < 0:
-            self.int_data = 1 << self.bit_sign
-
-    def __remove_number_sigh(self):
-        if self.number < 0:
-            self.number *= -1
-
-    def __define_sigh_in_data(self):
-        if self.__make_mask(self.bit_sign) & self.int_data:
-            self.number *= -1
-
-    def __define_number_length_in_bytes(self):
-        self.length = 0
-        max_value = self.first_byte_maxixum_value
-        while self.number > max_value:
-            self.length += 1
-            max_value = (self.first_byte_maxixum_value << 8 * ((2 ** self.length) - 1)) + \
-                        (1 << 8 * ((2 ** self.length) - 1)) - 1
-
-    def __set_bytes_length(self):
-        self.__define_number_length_in_bytes()
-        self.int_data |= (self.length << self.bit_size_low)
-        self.int_data <<= (8 * ((2 ** self.length) - 1))
-
-    def __put_number(self):
-        self.int_data |= self.number
-
-    def __define_bytes_length(self):
-        size_mask = (1 << self.bit_size_high) | (1 << self.bit_size_low)
-        self.length = 2 ** ((ord(self.data[0]) & size_mask) >> self.bit_size_low)
-
-    def __get_data(self):
-        rest_part_of_data = self.data[self.length: ]
-        self.data = self.data[0: self.length]
-        return rest_part_of_data
-
-    def __clean_number(self):
-        sigh_mask = self.__make_mask(self.bit_sign)
-        size_mask = self.__make_mask(self.bit_size_high) | self.__make_mask(self.bit_size_low)
-        number_mask = ~(sigh_mask | size_mask) & (1 << 8 * self.length) - 1
-        self.number = self.int_data & number_mask
-
-    @property
-    def pack(self):
-        self.__check_number_size_is_correct()
-        self.__put_sign_to_data()
-        self.__remove_number_sigh()
-        self.__set_bytes_length()
-        self.__put_number()
-        self.convert_int_to_data()
-        self.map = Type(self).pack
-        return self.map, self.data
-
-    @property
-    def unpack(self):
-        self.__define_bytes_length()
-        self.__check_data_size_is_correct()
-        rest_part_of_data = self.__get_data()
-        self.convert_data_to_int()
-        self.__clean_number()
-        self.__define_sigh_in_data()
-        return self.number, rest_part_of_data
-    """
 
 
 class LongInteger(IntStrConverter):
@@ -545,7 +483,7 @@ class Type(IntStrConverter):
 
     @property
     def type_index(self):
-        self.int_data << self.type_low_bit
+        return self.int_data << self.type_low_bit
 
     """
     @property
@@ -760,8 +698,35 @@ class BDATA:
 def tests():
     print "test start"
 
+    additional_data = "\xff"
+
+    print "-" * 10
+    print "Integer"
+
+
     #Integer(0).pack
-    Integer(0, length_in_schema=False).pack
+    Integer(0x7fffffffffffffff).pack
+    pack_test_cases = [
+        {"variable": 0, "length_in_schema": True, "schema": "\x00", "data", "\x00"},
+        {"variable": 0x7f, "length_in_schema": True, "schema": "\x00", "data", "\7f"},
+        {"variable": -0x7f, "length_in_schema": True, "schema": "\x00", "data", "\ff"},
+        {"variable": 0x7fff, "length_in_schema": True, "schema": "\x04", "data", "\7fff"},
+        {"variable": -0x7fff, "length_in_schema": True, "schema": "\x04", "data", "\ffff"},
+        {"variable": 0x7fffffff, "length_in_schema": True, "schema": "\x08", "data", "\7fffffff"},
+        {"variable": -0xffffffff, "length_in_schema": True, "schema": "\x08", "data", "\ffffffff"},
+        {"variable": 0x7fffffffffffffff, "length_in_schema": True, "schema": "\x0c", "data", "\7fffffffffffffff"},
+        {"variable": -0x7fffffffffffffff, "length_in_schema": True, "schema": "\x0c", "data", "\ffffffffffffffff"},
+        {"variable": 0x7fffffffffffffffff, "length_in_schema": True, "schema": "\x10\x01", "data", "\7fffffffffffffffff"},
+        {"variable": -0x7fffffffffffffffff, "length_in_schema": True, "schema": "\x10\x01", "data", "\ffffffffffffffffff"},
+        {"variable": 0x7fffffffffffffffffffffffffffff, "length_in_schema": True, "schema": "\x10\x07", "data", "\7fffffffffffffffffffffffffffff"},
+        {"variable": -0x7fffffffffffffffffffffffffffff, "length_in_schema": True, "schema": "\x10\x07", "data", "\ffffffffffffffffffffffffffffff"},
+    ]
+
+
+    #Integer(127).pack
+    #Integer(128).pack
+
+    #Integer(0, length_in_schema=False).pack
 
     """
 
@@ -888,7 +853,6 @@ def tests():
 
     variables = [
         ['123qweQWE', '\x09123qweQWE'],
-        ['йух123qwe', '\x0cйух123qwe'],
     ]
 
     for variable, data in variables:
