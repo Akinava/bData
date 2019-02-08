@@ -708,18 +708,18 @@ def tests():
     Integer(0x7fffffffffffffff).pack
     pack_test_cases = [
         {"variable": 0, "length_in_schema": True, "schema": "\x00", "data", "\x00"},
-        {"variable": 0x7f, "length_in_schema": True, "schema": "\x00", "data", "\7f"},
-        {"variable": -0x7f, "length_in_schema": True, "schema": "\x00", "data", "\ff"},
-        {"variable": 0x7fff, "length_in_schema": True, "schema": "\x04", "data", "\7fff"},
-        {"variable": -0x7fff, "length_in_schema": True, "schema": "\x04", "data", "\ffff"},
-        {"variable": 0x7fffffff, "length_in_schema": True, "schema": "\x08", "data", "\7fffffff"},
-        {"variable": -0xffffffff, "length_in_schema": True, "schema": "\x08", "data", "\ffffffff"},
-        {"variable": 0x7fffffffffffffff, "length_in_schema": True, "schema": "\x0c", "data", "\7fffffffffffffff"},
-        {"variable": -0x7fffffffffffffff, "length_in_schema": True, "schema": "\x0c", "data", "\ffffffffffffffff"},
-        {"variable": 0x7fffffffffffffffff, "length_in_schema": True, "schema": "\x10\x01", "data", "\7fffffffffffffffff"},
-        {"variable": -0x7fffffffffffffffff, "length_in_schema": True, "schema": "\x10\x01", "data", "\ffffffffffffffffff"},
-        {"variable": 0x7fffffffffffffffffffffffffffff, "length_in_schema": True, "schema": "\x10\x07", "data", "\7fffffffffffffffffffffffffffff"},
-        {"variable": -0x7fffffffffffffffffffffffffffff, "length_in_schema": True, "schema": "\x10\x07", "data", "\ffffffffffffffffffffffffffffff"},
+        {"variable": 0x7f, "length_in_schema": True, "schema": "\x00", "data", "\x7f"},
+        {"variable": -0x7f, "length_in_schema": True, "schema": "\x00", "data", "\xff"},
+        {"variable": 0x7fff, "length_in_schema": True, "schema": "\x04", "data", "\x7f\xff"},
+        {"variable": -0x7fff, "length_in_schema": True, "schema": "\x04", "data", "\xff\xff"},
+        {"variable": 0x7fffffff, "length_in_schema": True, "schema": "\x08", "data", "\x7f\xff\xff\xff"},
+        {"variable": -0xffffffff, "length_in_schema": True, "schema": "\x08", "data", "\xff\xff\xff\xff"},
+        {"variable": 0x7fffffffffffffff, "length_in_schema": True, "schema": "\x0c", "data", "\x7f\xff\xff\xff\xff\xff\xff\xff"},
+        {"variable": -0x7fffffffffffffff, "length_in_schema": True, "schema": "\x0c", "data", "\xff\xff\xff\xff\xff\xff\xff\xff"},
+        {"variable": 0x7fffffffffffffffff, "length_in_schema": True, "schema": "\x10\x01", "data", "\x7f\xff\xff\xff\xff\xff\xff\xff\xff"},
+        {"variable": -0x7fffffffffffffffff, "length_in_schema": True, "schema": "\x10\x01", "data", "\xff\xff\xff\xff\xff\xff\xff\xff\xff"},
+        {"variable": 0x7fffffffffffffffffffffffffffff, "length_in_schema": True, "schema": "\x10\x07", "data", "\x7f\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"},
+        {"variable": -0x7fffffffffffffffffffffffffffff, "length_in_schema": True, "schema": "\x10\x07", "data", "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"},
     ]
 
 
