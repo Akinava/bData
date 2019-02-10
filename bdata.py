@@ -53,18 +53,18 @@ class Byte:
     def shift_byte(self, shift_size):
         self.variable <<= 8 * shift_size
 
+    def get_maximal_value(self, start_bit, bytes):
+        self.set_bit(start_bit+1)
+        self.shift_byte(bytes-1)
+        self.variable -= 1
+
 
 class IntStrConverter:
-    """
-    self.number   | number to/from converting
-    self.int_data | hex on int format
-    self.data     | hex string
-    """
     def __init__(self, variable):
         self.variable = variable
 
     def convert_int_to_data(self):
-        hex_string = "{:x}".format(self.int_data)
+        hex_string = "{:x}".format(self.variable)
         if len(hex_string) % 2: hex_string = "0" + hex_string
         return hex_string.decode("hex")
 
@@ -72,42 +72,45 @@ class IntStrConverter:
         return int(self.variable.encode("hex"), 16)
 
 
-class Integer(IntStrConverter):
+class Integer:
     """
     schema
     765 bits
     000 reserverd for type bits
 
      432 bits
-    ~000~ stock length 1 byte
-    ~001~ stock length 2 byte
-    ~010~ stock length 4 byte
-    ~011~ stock length 8 byte
-    ~10~  custom length define aftert his bits
-    ~11~  custom length define in data
+    ~000~ regular length 1 byte
+    ~001~ regular length 2 byte
+    ~010~ regular length 4 byte
+    ~011~ regular length 8 byte
+    ~10~  outsize length define aftert this bits
+    ~11~  outsize length define in data
 
     10 bits
-    00 reserved bits
+    00 bits define outsize length if outsize length gedined in schema
+
+    outsize length of number in bytes defined as (length - 8)
+    because regular length include length ap to 8 bytes
     """
-    schema_length_is_custom_bit = 4
-    schema_length_place_bit = schema_length_is_custom_bit - 1
-    schema_length_low_bit = schema_length_is_custom_bit - 2
+    schema_length_is_outsize_bit = 4
+    schema_length_place_bit = schema_length_is_outsize_bit - 1
+    schema_length_low_bit = schema_length_is_outsize_bit - 2
 
     """
     data
     7 reserved for sigh bit
-    6 define/undefine custom length depends on bit 4 in schema
+    6 define/undefine outsize length depends on bit 4 in schema
     5 length of number/length depends on bit 6
     4 length of number/length depends on bit 6
-    rest part number or length of number custom length
+    rest part number or length of number outsize length
     """
 
     data_sigh_bit = 7
-    data_length_is_custom_bit = 6  # if this bit set as 1 no need in data_high_size_bit and data_low_size_bits
+    data_length_is_outsize_bit = 6  # if this bit set as 1 no need in data_high_size_bit and data_low_size_bits
     data_length_low_bit = 4
 
-    stock_length_bits_value = range(4)
-    stock_length_list = map(lambda x: 2 ** x, stock_length_bits_value)
+    regular_length_bits_value = range(4)
+    regular_length_list = map(lambda x: 2 ** x, regular_length_bits_value)
 
     def __init__(self, variable, length_in_schema=True):
         if isinstance(variable, (int, long)):
@@ -117,18 +120,23 @@ class Integer(IntStrConverter):
         self.length_in_schema = length_in_schema
 
     def __make_schema(self):
-        self.schema = Type(self).type_index
+        self.__put_type_in_schema()
         self.__define_length_in_bytes()
-        if length_in_schema:
 
-        print "self.length", self.length
+        if self.length_in_bytes in self.regular_length_list:
+            # TODO
+            pass
+        print "self.length_in_bytes", self.length_in_bytes
+
+
+    def __put_type_in_schema(self):
+        self.schema = Type(self).type_index
 
     def __define_length_in_bytes(self):
         maximum_value = self.__maximum_value_in_first_byte()
-        self.length = 0
-        for length in self.stock_length_list:
+        for length in self.regular_length_list:
             if self.__check_variable_is_compliance_border(self.number, maximum_value):
-                self.length = length
+                self.lengt_in_bytes = length
                 return
             first_part = Byte(maximum_value)
             first_part.shift_byte(length)
@@ -136,6 +144,7 @@ class Integer(IntStrConverter):
             last_part = Byte()
             last_part.make_mask(length)
             maximum_value |= last_part.get()
+        self.lengt_in_bytes = len(IntStrConverter(self.number).convert_int_to_data())
 
     def __check_variable_is_compliance_border(self, variable, border):
         if -border <= variable <= border:
@@ -150,7 +159,7 @@ class Integer(IntStrConverter):
             byte.make_mask()
             return byte.get()
 
-        byte.set_bit(self.data_length_is_custom_bit)
+        byte.set_bit(self.data_length_is_outsize_bit)
         byte.set_bit(self.data_length_high_bit)
         byte.set_bit(self.data_length_low_bit)
         byte.make_mask()
@@ -703,27 +712,29 @@ def tests():
     print "-" * 10
     print "Integer"
 
-
-    #Integer(0).pack
-    Integer(0x7fffffffffffffff).pack
     pack_test_cases = [
-        {"variable": 0, "length_in_schema": True, "schema": "\x00", "data", "\x00"},
-        {"variable": 0x7f, "length_in_schema": True, "schema": "\x00", "data", "\x7f"},
-        {"variable": -0x7f, "length_in_schema": True, "schema": "\x00", "data", "\xff"},
-        {"variable": 0x7fff, "length_in_schema": True, "schema": "\x04", "data", "\x7f\xff"},
-        {"variable": -0x7fff, "length_in_schema": True, "schema": "\x04", "data", "\xff\xff"},
-        {"variable": 0x7fffffff, "length_in_schema": True, "schema": "\x08", "data", "\x7f\xff\xff\xff"},
-        {"variable": -0xffffffff, "length_in_schema": True, "schema": "\x08", "data", "\xff\xff\xff\xff"},
-        {"variable": 0x7fffffffffffffff, "length_in_schema": True, "schema": "\x0c", "data", "\x7f\xff\xff\xff\xff\xff\xff\xff"},
-        {"variable": -0x7fffffffffffffff, "length_in_schema": True, "schema": "\x0c", "data", "\xff\xff\xff\xff\xff\xff\xff\xff"},
-        {"variable": 0x7fffffffffffffffff, "length_in_schema": True, "schema": "\x10\x01", "data", "\x7f\xff\xff\xff\xff\xff\xff\xff\xff"},
-        {"variable": -0x7fffffffffffffffff, "length_in_schema": True, "schema": "\x10\x01", "data", "\xff\xff\xff\xff\xff\xff\xff\xff\xff"},
-        {"variable": 0x7fffffffffffffffffffffffffffff, "length_in_schema": True, "schema": "\x10\x07", "data", "\x7f\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"},
-        {"variable": -0x7fffffffffffffffffffffffffffff, "length_in_schema": True, "schema": "\x10\x07", "data", "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"},
+        {"variable": 0, "length_in_schema": True, "schema": "\x00", "data": "\x00"},
+        {"variable": 0x7f, "length_in_schema": True, "schema": "\x00", "data": "\x7f"},
+        {"variable": -0x7f, "length_in_schema": True, "schema": "\x00", "data": "\xff"},
+        {"variable": 0x7fff, "length_in_schema": True, "schema": "\x04", "data": "\x7f\xff"},
+        {"variable": -0x7fff, "length_in_schema": True, "schema": "\x04", "data": "\xff\xff"},
+        {"variable": 0x7fffffff, "length_in_schema": True, "schema": "\x08", "data": "\x7f\xff\xff\xff"},
+        {"variable": -0xffffffff, "length_in_schema": True, "schema": "\x08", "data": "\xff\xff\xff\xff"},
+        {"variable": 0x7fffffffffffffff, "length_in_schema": True, "schema": "\x0c", "data": "\x7f\xff\xff\xff\xff\xff\xff\xff"},
+        {"variable": -0x7fffffffffffffff, "length_in_schema": True, "schema": "\x0c", "data": "\xff\xff\xff\xff\xff\xff\xff\xff"},
+        {"variable": 0x7fffffffffffffffff, "length_in_schema": True, "schema": "\x10\x01", "data": "\x7f\xff\xff\xff\xff\xff\xff\xff\xff"},
+        {"variable": -0x7fffffffffffffffff, "length_in_schema": True, "schema": "\x10\x01", "data": "\xff\xff\xff\xff\xff\xff\xff\xff\xff"},
+        {"variable": 0x7fffffffffffffffffffffffffffff, "length_in_schema": True, "schema": "\x10\x07", "data": "\x7f\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"},
+        {"variable": -0x7fffffffffffffffffffffffffffff, "length_in_schema": True, "schema": "\x10\x07", "data": "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"},
     ]
 
+    for case in pack_test_cases:
+        schema, data = Integer(case['variable'], length_in_schema=case['length_in_schema']).pack
+        if schema != case['schema']:
+            print 'Error pack schema', hex(case['variable'])
+        if data != case['data']:
+            print 'Error pack data', hex(case['variable'])
 
-    #Integer(127).pack
     #Integer(128).pack
 
     #Integer(0, length_in_schema=False).pack
