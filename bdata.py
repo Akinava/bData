@@ -50,6 +50,9 @@ class Byte:
     def make_mask(self, mask_size_in_byte=1):
         self.variable = ~self.variable & (1 << 8 * mask_size_in_byte) - 1
 
+    def shift_bits(self, shift_size):
+        self.variable <<= shift_size
+
     def shift_byte(self, shift_size):
         self.variable <<= 8 * shift_size
 
@@ -84,17 +87,22 @@ class Integer:
     ~010~ regular length 4 byte
     ~011~ regular length 8 byte
     ~10~  outsize length define aftert this bits
-    ~11~  outsize length define in data
+    ~11~  length define in data
 
-    10 bits
-    00 bits define outsize length if outsize length gedined in schema
+    21 bits
+    00 bits define outsize length in bytes if outsize length gefined in schema (4 bit is 1 and 3 bit is 0)
 
-    outsize length of number in bytes defined as (length - 8)
+    0 bit
+    0 reserved
+
+    outsize length of number in bytes defined as (length - max_regular_length - 1)
     because regular length include length ap to 8 bytes
     """
-    schema_length_is_outsize_bit = 4
-    schema_length_place_bit = schema_length_is_outsize_bit - 1
-    schema_length_low_bit = schema_length_is_outsize_bit - 2
+
+    schema_bit_length_is_outsize = 4
+    schema_bit_length_define_in_data = 3
+    schema_bit_length_low_bit = 2
+    schema_bit_outsize_length_low_bit = 1
 
     """
     data
@@ -111,6 +119,7 @@ class Integer:
 
     regular_length_bits_value = range(4)
     regular_length_list = map(lambda x: 2 ** x, regular_length_bits_value)
+    max_regular_length = max(regular_length_list)
 
     def __init__(self, variable, length_in_schema=True):
         if isinstance(variable, (int, long)):
@@ -121,133 +130,113 @@ class Integer:
 
     def __make_schema(self):
         self.__put_type_in_schema()
-        self.__define_length_in_bytes()
+        if not self.length_in_schema:
+            self.__set_in_schema_length_in_data()
+        else:
+            self.__put_length_in_schema()
+        return IntStrConverter(self.schema_int).convert_int_to_data()
 
-        if self.length_in_bytes in self.regular_length_list:
-            # TODO
-            pass
-        print "self.length_in_bytes", self.length_in_bytes
+    def __put_length_in_schema(self):
+        self.__get_length_in_bytes()
+        if self.length_in_bytes > self.max_regular_length:
+            self.__put_outsize_length_in_schema()
+        else:
+            self.__put_regular_length_in_schema()
 
+    def __put_regular_length_in_schema(self):
+        length_index = self.regular_length_list.index(self.length_in_bytes)
+        length_bits = self.regular_length_bits_value[length_index]
+        length_byte = Byte(length_bits)
+        length_byte.shift_bits(self.schema_bit_length_low_bit)
+        self.schema_int |= length_byte.get()
+
+    def __set_outsize_length_schema_bit(self):
+        outsize_length_in_schema_byte = Byte()
+        outsize_length_in_schema_byte.set_bit(self.schema_bit_length_is_outsize)
+        self.schema_int |= outsize_length_in_schema_byte.get()
+
+    def __put_outsize_length_in_schema(self):
+        self.__set_outsize_length_schema_bit()
+
+
+        outsize_length_int = self.length_in_bytes - self.max_regular_length - 1
+        outsize_length_bytes = len(IntStrConverter(outsize_length_int).convert_int_to_data())
+        for length in self.regular_length_list:
+            if outsize_length_bytes > length:
+                continue
+            outsize_length_bytes = length
+            outsize_length_bits_index = self.regular_length_list.index(outsize_length_bytes)
+            outsize_length_bits = self.regular_length_bits_value[outsize_length_bits_index]
+
+            outsize_length_byte = Byte(outsize_length_bits)
+            outsize_length_byte.shift_bits(self.schema_bit_outsize_length_low_bit)
+            self.schema_int |= outsize_length_byte.get()
+
+            schema_bytes = Byte(self.schema_int)
+            schema_bytes.shift_byte(outsize_length_bytes)
+            self.schema_int = schema_bytes.get()
+            self.schema_int |= outsize_length_int
+
+    def __get_length_in_bytes(self):
+        start_bit = self.data_sigh_bit - 1
+        if not self.length_in_schema:
+            start_bit = self.data_length_low_bit - 1
+        for length in self.regular_length_list:
+            maximum_value_byte = Byte()
+            maximum_value_byte.get_maximal_value(start_bit, length)
+            maximum_value = maximum_value_byte.get()
+            if self.__check_variable_is_compliance_border(self.number, maximum_value):
+                self.length_in_bytes = length
+                return
+        self.length_in_bytes = len(IntStrConverter(self.number).convert_int_to_data())
+
+    def __set_in_schema_length_in_data(self):
+        length_is_outsize_bit = Byte()
+        length_is_outsize_bit.set_bit(self.schema_length_is_outsize_bit)
+        self.schema_int |= length_is_outsize_bit.get()
+
+        length_define_in_data_bit = Byte()
+        length_define_in_data_bit.set_bit(self.schema_bit_length_define_in_data)
+        self.schema_int |= length_define_in_data_bit.get()
 
     def __put_type_in_schema(self):
-        self.schema = Type(self).type_index
-
-    def __define_length_in_bytes(self):
-        maximum_value = self.__maximum_value_in_first_byte()
-        for length in self.regular_length_list:
-            if self.__check_variable_is_compliance_border(self.number, maximum_value):
-                self.lengt_in_bytes = length
-                return
-            first_part = Byte(maximum_value)
-            first_part.shift_byte(length)
-            maximum_value = first_part.get()
-            last_part = Byte()
-            last_part.make_mask(length)
-            maximum_value |= last_part.get()
-        self.lengt_in_bytes = len(IntStrConverter(self.number).convert_int_to_data())
+        self.schema_int = Type(self).type_index
 
     def __check_variable_is_compliance_border(self, variable, border):
         if -border <= variable <= border:
             return True
         return False
 
-    def __maximum_value_in_first_byte(self):
-        byte = Byte()
-        byte.set_bit(self.data_sigh_bit)
+    def __put_outsize_length_to_data(self):
+        # TODO
+        pass
 
-        if self.length_in_schema:
-            byte.make_mask()
-            return byte.get()
+    def __make_data(self):
+        self.data_int = 0
 
-        byte.set_bit(self.data_length_is_outsize_bit)
-        byte.set_bit(self.data_length_high_bit)
-        byte.set_bit(self.data_length_low_bit)
-        byte.make_mask()
-        return byte.get()
+        if self.number < 0:
+            number_byte = Byte()
+            number_byte.set_bit(self.data_sigh_bit)
+            self.data_int |= number_byte.get()
+            self.number *= -1
+        number_byte = Byte(self.data_int)
+        number_byte.shift_byte(self.length_in_bytes-1)
+        self.data_int = number_byte.get()
+
+        if self.length_in_bytes < self.max_regular_length or self.length_in_schema:
+            return IntStrConverter(self.data_int | self.number).convert_int_to_data()
+        self.__put_outsize_length_to_data()
+        return IntStrConverter(self.data_int).convert_int_to_data() + IntStrConverter(self.number).convert_int_to_data()
 
     @property
     def pack(self):
         return self.__make_schema(), self.__make_data()
 
-
-class LongInteger(IntStrConverter):
-    def __init__(self, variable):
-        if isinstance(variable, (int, long)):
-            self.number = variable
-        if isinstance(variable, str):
-            self.data = variable
-
-    def __check_data_size_is_correct(self):
-        if len(self.data) >= self.length:
-            return
-        raise Exception("data length less then {}".format(self.length))
-
-    def __check_data_has_data(self):
-        if self.data != "":
-            return
-        raise Exception("data is empty")
-
-    def __get_number_sigh(self):
-        self.sigh = 1
-        if self.number < 0:
-            self.sigh = -1
-
-    def __remove_int_data_sigh(self):
-        if self.number < 0:
-            self.int_data *= -1
-
-    def __get_sigh_from_length(self):
-        self.sigh = 1
-        if self.length < 0:
-            self.sigh = -1
-
-    def __remove_sigh_from_length(self):
-        self.length *= self.sigh
-
-    def __set_sigh_of_number(self):
-        self.number = self.int_data * self.sigh
-
-    def __define_length_in_bytes(self):
-        self.length = len(self.data)
-
-    def __put_sigh_to_data(self):
-        self.length *= self.sigh
-
-    def __put_length_to_data(self):
-        _, length_pack = Integer(self.length).pack
-        self.data = length_pack + self.data
-
-    def __get_length_in_data(self):
-        self.length, self.data = Integer(self.data).unpack
-
-    def __get_number(self):
-        rest_part_of_data = self.data[self.length: ]
-        self.data = self.data[0: self.length]
-        self.convert_data_to_int()
-        return rest_part_of_data
-
-    @property
-    def pack(self):
-        self.int_data = self.number
-        self.__get_number_sigh()
-        self.__remove_int_data_sigh()
-        self.convert_int_to_data()
-        self.__define_length_in_bytes()
-        self.__put_sigh_to_data()
-        self.__put_length_to_data()
-        self.map = Type(self).pack
-        return self.map, self.data
-
     @property
     def unpack(self):
-        self.__check_data_has_data()
-        self.__get_length_in_data()
-        self.__get_sigh_from_length()
-        self.__remove_sigh_from_length()
-        self.__check_data_size_is_correct()
-        rest_part_of_data = self.__get_number()
-        self.__set_sigh_of_number()
-        return self.number, rest_part_of_data
+        self.__unpack_schema()
+        self.__unpack_data()
+        return self.number, self.rest_data
 
 
 class Float:
@@ -445,7 +434,7 @@ class Contraction:
         pass
 
 
-class Type(IntStrConverter):
+class Type:
     """
     # type bits mark as 1
     11100000
@@ -487,7 +476,6 @@ class Type(IntStrConverter):
             if not isinstance(variable, real_type) and not isinstance(variable, data_type):
                 continue
             self.int_data = self.types_index.index(data_type)
-            self.convert_int_to_data()
             break
 
     @property
@@ -719,11 +707,11 @@ def tests():
         {"variable": 0x7fff, "length_in_schema": True, "schema": "\x04", "data": "\x7f\xff"},
         {"variable": -0x7fff, "length_in_schema": True, "schema": "\x04", "data": "\xff\xff"},
         {"variable": 0x7fffffff, "length_in_schema": True, "schema": "\x08", "data": "\x7f\xff\xff\xff"},
-        {"variable": -0xffffffff, "length_in_schema": True, "schema": "\x08", "data": "\xff\xff\xff\xff"},
+        {"variable": -0x7fffffff, "length_in_schema": True, "schema": "\x08", "data": "\xff\xff\xff\xff"},
         {"variable": 0x7fffffffffffffff, "length_in_schema": True, "schema": "\x0c", "data": "\x7f\xff\xff\xff\xff\xff\xff\xff"},
         {"variable": -0x7fffffffffffffff, "length_in_schema": True, "schema": "\x0c", "data": "\xff\xff\xff\xff\xff\xff\xff\xff"},
-        {"variable": 0x7fffffffffffffffff, "length_in_schema": True, "schema": "\x10\x01", "data": "\x7f\xff\xff\xff\xff\xff\xff\xff\xff"},
-        {"variable": -0x7fffffffffffffffff, "length_in_schema": True, "schema": "\x10\x01", "data": "\xff\xff\xff\xff\xff\xff\xff\xff\xff"},
+        {"variable": 0x7fffffffffffffffff, "length_in_schema": True, "schema": "\x10\x00", "data": "\x7f\xff\xff\xff\xff\xff\xff\xff\xff"},
+        {"variable": -0x7fffffffffffffffff, "length_in_schema": True, "schema": "\x10\x00", "data": "\xff\xff\xff\xff\xff\xff\xff\xff\xff"},
         {"variable": 0x7fffffffffffffffffffffffffffff, "length_in_schema": True, "schema": "\x10\x07", "data": "\x7f\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"},
         {"variable": -0x7fffffffffffffffffffffffffffff, "length_in_schema": True, "schema": "\x10\x07", "data": "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"},
     ]
@@ -731,11 +719,12 @@ def tests():
     for case in pack_test_cases:
         schema, data = Integer(case['variable'], length_in_schema=case['length_in_schema']).pack
         if schema != case['schema']:
+            print 'res schema', bin(int(schema.encode('hex'), 16))
             print 'Error pack schema', hex(case['variable'])
-        if data != case['data']:
-            print 'Error pack data', hex(case['variable'])
 
-    #Integer(128).pack
+        if data != case['data']:
+            print 'res data', bin(int(data.encode('hex'), 16))
+            print 'Error pack data', hex(case['variable'])
 
     #Integer(0, length_in_schema=False).pack
 
