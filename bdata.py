@@ -43,23 +43,25 @@ class Byte:
 
     def set_bit(self, bit_number):
         self.variable |= 1 << bit_number
-
-    def unset_bit(self, bit_number):
-        self.variable &= ~(1 << bit_number) & (1 << 8) - 1
+        return self.variable
 
     def make_mask(self, mask_size_in_byte=1):
         self.variable = ~self.variable & (1 << 8 * mask_size_in_byte) - 1
+        return self.variable
 
     def shift_bits(self, shift_size):
         self.variable <<= shift_size
+        return self.variable
 
     def shift_byte(self, shift_size):
         self.variable <<= 8 * shift_size
+        return self.variable
 
     def get_maximal_value(self, start_bit, bytes=1):
         self.set_bit(start_bit+1)
         self.shift_byte(bytes-1)
         self.variable -= 1
+        return self.variable
 
 
 class IntStrConverter:
@@ -93,8 +95,11 @@ class Integer:
     ~10~  outsize length define aftert this bits
     ~11~  length define in data
 
-    21 bits
-    00 bits define outsize length in bytes if outsize length gefined in schema (4 bit is 1 and 3 bit is 0)
+    21 bits define outsize length in bytes if outsize length gefined in schema
+    00 outsize length 1 byte
+    01 outsize length 2 byte
+    10 outsize length 4 byte
+    11 outsize length 8 byte
 
     0 bit
     0 reserved
@@ -121,9 +126,11 @@ class Integer:
     data_length_is_outsize_bit = 6  # if this bit set as 1 no need in data_high_size_bit and data_low_size_bits
     data_length_low_bit = 4
 
-    regular_length_bits_value = range(4)
-    regular_length_list = map(lambda x: 2 ** x, regular_length_bits_value)
+    regular_length_bits_value = (0, 1, 2, 3)
+    regular_length_list =       (1, 2, 4, 8)
     max_regular_length = max(regular_length_list)
+    max_regular_number_length_in_schema = (0x7f, 0x7fff+0x7f, 0x7fffffff+0x7fff+0x7f, 0x7fffffffffffffff+0x7fffffff+0x7fff+0x7f)
+    max_regular_number_length_in_data = (0x0f, 0x0fff+0x0f, 0x0fffffff+0x0fff+0x0f, 0x0fffffffffffffff+0x0fffffff+0x0fff+0x0f)
 
     def __init__(self, length_in_schema=True):
         self.length_in_schema = length_in_schema
@@ -256,13 +263,13 @@ class Integer:
             self.__get_length_in_bytes()
             self.__put_length_to_data()
 
+
         self.__put_sigh_to_data()
         number_byte = Byte(self.data_int)
         number_byte.shift_byte(self.length_in_bytes-1)
         self.data_int = number_byte.get()
 
-        # FIXME
-        if self.length_in_bytes < self.max_regular_length or self.length_in_schema:
+        if self.length_in_schema or self.number <= self.max_regular_number_with_length_in_data:
             return IntStrConverter(self.data_int | self.number).convert_int_to_data(self.length_in_bytes)
 
         return IntStrConverter(self.data_int).convert_int_to_data() + IntStrConverter(self.number).convert_int_to_data()
@@ -758,6 +765,8 @@ def tests():
         #{'value': -0x7fffffffffffffff, 'length_in_schema': True, 'schema': '\x0c', 'data': '\xff\xff\xff\xff\xff\xff\xff\xff'},
         #{'value': 0xffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x00', 'data': '\x00\xff\xff\xff\xff\xff\xff\xff\xff'},
         #{'value': -0xffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x00', 'data': '\x80\xff\xff\xff\xff\xff\xff\xff\xff'},
+        #{'value': 0x0fffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x00', 'data': '\x0f\xff\xff\xff\xff\xff\xff\xff\xff'},
+        #{'value': -0x0fffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x00', 'data': '\x8f\xff\xff\xff\xff\xff\xff\xff\xff'},
         #{'value': 0x7fffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x00', 'data': '\x7f\xff\xff\xff\xff\xff\xff\xff\xff'},
         #{'value': -0x7fffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x00', 'data': '\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
         #{'value': 0xffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x01', 'data': '\x00\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
@@ -787,9 +796,14 @@ def tests():
         #{'value': -0x0fff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x9f\xff'},
         #{'value': 0x0fffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x2f\xff\xff\xff'},
         #{'value': -0x0fffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\xaf\xff\xff\xff'},
-        {'value': 0x0fffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x3f\xff\xff\xff\xff\xff\xff\xff'},
-        {'value': -0x0fffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\xbf\xff\xff\xff\xff\xff\xff\xff'},
-        {'value': -0xffffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\xbf\xff\xff\xff\xff\xff\xff\xff'},
+        #{'value': 0x0fffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x3f\xff\xff\xff\xff\xff\xff\xff'},
+        #{'value': -0x0fffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\xbf\xff\xff\xff\xff\xff\xff\xff'},
+        #{'value': 0xffffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x40\xff\xff\xff\xff\xff\xff\xff\xff'},
+        #{'value': -0xffffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\xc0\xff\xff\xff\xff\xff\xff\xff\xff'},
+        #{'value': 0xfffffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x41\x0f\xff\xff\xff\xff\xff\xff\xff\xff'},
+        #{'value': -0xfffffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\xc1\x0f\xff\xff\xff\xff\xff\xff\xff\xff'},
+        #{'value': 0xffffffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x41\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
+        #{'value': -0xffffffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\xc1\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
     ]
 
     for case in pack_test_cases:
