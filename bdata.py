@@ -122,120 +122,33 @@ class Integer:
     rest part number or length of number outsize length
     '''
 
-    data_sigh_bit = 7
+    data_sigh_bit              = 7
     data_length_is_outsize_bit = 6  # if this bit set as 1 no need in data_high_size_bit and data_low_size_bits
-    data_length_low_bit = 4
+    data_length_low_bit        = 4
 
-    regular_length_bits_value = (0, 1, 2, 3)
-    regular_length_list =       (1, 2, 4, 8)
-    max_regular_length = max(regular_length_list)
-    max_regular_number_length_in_schema = (0x7f, 0x7fff+0x7f, 0x7fffffff+0x7fff+0x7f, 0x7fffffffffffffff+0x7fffffff+0x7fff+0x7f)
-    max_regular_number_length_in_data = (0x0f, 0x0fff+0x0f, 0x0fffffff+0x0fff+0x0f, 0x0fffffffffffffff+0x0fffffff+0x0fff+0x0f)
+    regular_length_bits_value  = (0, 1, 2, 3)
+    regular_length_bytes       = (1, 2, 4, 8)
+    max_regular_numbers = (
+        0x7f,
+        0x7fff,
+        0x7fffffff,
+        0x7fffffffffffffff)
+    max_regular_number_length_in_data = (
+        0x0f,
+        0x0fff,
+        0x0fffffff,
+        0x0fffffffffffffff)
 
     def __init__(self, length_in_schema=True):
         self.length_in_schema = length_in_schema
 
-    def __make_schema(self):
-        self.__put_type_in_schema()
-        if not self.length_in_schema:
-            self.__set_in_schema_length_in_data()
-        else:
-            self.__put_length_in_schema()
-        return IntStrConverter(self.schema_int).convert_int_to_data()
-
-    def __put_length_in_schema(self):
-        self.__get_length_in_bytes()
-        if self.length_in_bytes > self.max_regular_length:
-            self.__put_outsize_length_in_schema()
-        else:
-            self.__put_regular_length_in_schema()
-
-    def __get_length_bits(self):
-        length_index = self.regular_length_list.index(self.length_in_bytes)
-        return self.regular_length_bits_value[length_index]
-
-    def __put_regular_length_in_schema(self):
-        length_bits = self.__get_length_bits()
-        length_byte = Byte(length_bits)
-        length_byte.shift_bits(self.schema_bit_length_low_bit)
-        self.schema_int |= length_byte.get()
-
-    def __set_outsize_length_schema_bit(self):
-        outsize_length_in_schema_byte = Byte()
-        outsize_length_in_schema_byte.set_bit(self.schema_bit_length_is_outsize)
-        self.schema_int |= outsize_length_in_schema_byte.get()
-
-    def __put_outsize_length_in_schema(self):
-        self.__set_outsize_length_schema_bit()
-        outsize_length_int = self.length_in_bytes - self.max_regular_length - 1
-
-        outsize_length_bytes = len(IntStrConverter(outsize_length_int).convert_int_to_data())
-        for length in self.regular_length_list:
-            if outsize_length_bytes > length:
-                continue
-            outsize_length_bytes = length
-            outsize_length_bits_index = self.regular_length_list.index(outsize_length_bytes)
-            outsize_length_bits = self.regular_length_bits_value[outsize_length_bits_index]
-
-            outsize_length_byte = Byte(outsize_length_bits)
-            outsize_length_byte.shift_bits(self.schema_bit_outsize_length_low_bit)
-            self.schema_int |= outsize_length_byte.get()
-
-            schema_bytes = Byte(self.schema_int)
-            schema_bytes.shift_byte(outsize_length_bytes)
-            self.schema_int = schema_bytes.get()
-            self.schema_int |= outsize_length_int
-            break
-
-    def __remove_number_sign(self):
+    def __number_without_sign(self):
         return self.number if self.number > 0 else -self.number
-
-    def __data_start_bit(self):
-        if self.length_in_schema:
-            return self.data_sigh_bit - 1
-        return self.data_length_low_bit - 1
-
-    def __get_length_in_bytes(self):
-        start_bit = self.__data_start_bit()
-        number = self.__remove_number_sign()
-
-        for length in self.regular_length_list:
-            maximum_value_byte = Byte()
-            maximum_value_byte.get_maximal_value(start_bit, length)
-            maximum_value = maximum_value_byte.get()
-            if self.__check_variable_is_compliance_border(number, maximum_value):
-                self.length_in_bytes = length
-                return
-
-        self.length_in_bytes = len(IntStrConverter(number).convert_int_to_data())
-
-        maximum_value_byte = Byte()
-        maximum_value_byte.get_maximal_value(start_bit, 1)
-        maximum_value = maximum_value_byte.get()
-        number_first_byte = ord(IntStrConverter(number).convert_int_to_data()[0])
-        if not self.__check_variable_is_compliance_border(number_first_byte, maximum_value):
-            self.length_in_bytes += 1
-
-    def __set_in_schema_length_in_data(self):
-        length_is_outsize_bit = Byte()
-        length_is_outsize_bit.set_bit(self.schema_bit_length_is_outsize)
-        self.schema_int |= length_is_outsize_bit.get()
-
-        length_define_in_data_bit = Byte()
-        length_define_in_data_bit.set_bit(self.schema_bit_length_define_in_data)
-        self.schema_int |= length_define_in_data_bit.get()
-
-    def __put_type_in_schema(self):
-        self.schema_int = Type(self).type_index
 
     def __check_variable_is_compliance_border(self, variable, border):
         if variable > border:
             return False
         return True
-
-    def __put_outsize_length_to_data(self):
-        # TODO
-        pass
 
     def __put_sigh_to_data(self):
         if self.number < 0:
@@ -250,29 +163,19 @@ class Integer:
         else:
             self.__put_regular_length_in_data()
 
-    def __put_regular_length_in_data(self):
-        length_bits = self.__get_length_bits()
-        length_byte = Byte(length_bits)
-        length_byte.shift_bits(self.data_length_low_bit)
-        self.data_int |= length_byte.get()
+    def __put_type_in_schema(self):
+        self.schema_int = Type(self).type_index
+
+    def __make_schema(self):
+        self.__put_type_in_schema()
+        if self.length_in_schema:
+            self.__put_length_in_schema()
+        else:
+            self.__set_in_schema_length_in_data()
+        return IntStrConverter(self.schema_int).convert_int_to_data()
 
     def __make_data(self):
-        self.data_int = 0
-
-        if not self.length_in_schema:
-            self.__get_length_in_bytes()
-            self.__put_length_to_data()
-
-
-        self.__put_sigh_to_data()
-        number_byte = Byte(self.data_int)
-        number_byte.shift_byte(self.length_in_bytes-1)
-        self.data_int = number_byte.get()
-
-        if self.length_in_schema or self.number <= self.max_regular_number_with_length_in_data:
-            return IntStrConverter(self.data_int | self.number).convert_int_to_data(self.length_in_bytes)
-
-        return IntStrConverter(self.data_int).convert_int_to_data() + IntStrConverter(self.number).convert_int_to_data()
+        return
 
     def pack(self, value):
         self.number = value
@@ -349,6 +252,7 @@ class Float:
         self.__build_float()
         return self.number, self.data
 
+
 class String:
     def __init__(self, variable='', data=''):
         if data == '':
@@ -382,12 +286,14 @@ class String:
         self.map = Type(self).pack
         return self.map, self.data
 
+    """
     @property
     def unpack(self):
         self.__get_length_in_data()
         self.__check_variable_size_is_correct()
         self.__get_variable_from_data()
         return self.variable, self.data
+    """
 
 
 class Boolean:
@@ -453,9 +359,12 @@ class List(IntStrConverter):
 
 class Dictionary:
     '''
-    equal_objects =   1
-    unequal_objects = 0
-    bit =             7
+    keys and/or values type is unequal                    = 0
+    all keys type are equal and all value types are equal = 1
+    all keys and value are equal                          = 2
+    definition_bit =   4  schema/data = 0/1
+    length_bit     =   2
+    equal_definition = 0
     '''
 
     def pack(self, numer):
@@ -748,52 +657,64 @@ def tests():
     print 'Integer'
 
     pack_test_cases = [
-        #{'value': 0, 'length_in_schema': True, 'schema': '\x00', 'data': '\x00'},
-        #{'value': 0x7f, 'length_in_schema': True, 'schema': '\x00', 'data': '\x7f'},
-        #{'value': -0x7f, 'length_in_schema': True, 'schema': '\x00', 'data': '\xff'},
-        #{'value': 0xff, 'length_in_schema': True, 'schema': '\x04', 'data': '\x00\xff'},
-        #{'value': -0xff, 'length_in_schema': True, 'schema': '\x04', 'data': '\x80\xff'},
-        #{'value': 0x7fff, 'length_in_schema': True, 'schema': '\x04', 'data': '\x7f\xff'},
-        #{'value': -0x7fff, 'length_in_schema': True, 'schema': '\x04', 'data': '\xff\xff'},
-        #{'value': 0xffff, 'length_in_schema': True, 'schema': '\x08', 'data': '\x00\x00\xff\xff'},
-        #{'value': -0xffff, 'length_in_schema': True, 'schema': '\x08', 'data': '\x80\x00\xff\xff'},
-        #{'value': 0x7fffffff, 'length_in_schema': True, 'schema': '\x08', 'data': '\x7f\xff\xff\xff'},
-        #{'value': -0x7fffffff, 'length_in_schema': True, 'schema': '\x08', 'data': '\xff\xff\xff\xff'},
-        #{'value': 0xffffffff, 'length_in_schema': True, 'schema': '\x0c', 'data': '\x00\x00\x00\x00\xff\xff\xff\xff'},
-        #{'value': -0xffffffff, 'length_in_schema': True, 'schema': '\x0c', 'data': '\x80\x00\x00\x00\xff\xff\xff\xff'},
-        #{'value': 0x7fffffffffffffff, 'length_in_schema': True, 'schema': '\x0c', 'data': '\x7f\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0x7fffffffffffffff, 'length_in_schema': True, 'schema': '\x0c', 'data': '\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0xffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x00', 'data': '\x00\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0xffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x00', 'data': '\x80\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0x0fffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x00', 'data': '\x0f\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0x0fffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x00', 'data': '\x8f\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0x7fffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x00', 'data': '\x7f\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0x7fffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x00', 'data': '\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0xffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x01', 'data': '\x00\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0xffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x01', 'data': '\x80\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0x7fffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x01', 'data': '\x7f\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0x7fffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x01', 'data': '\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0xffffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x02', 'data': '\x00\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0xffffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x02', 'data': '\x80\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0x7fffffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x02', 'data': '\x7f\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0x7fffffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x02', 'data': '\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0xffffffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x03', 'data': '\x00\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0xffffffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x03', 'data': '\x80\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0x7fffffffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x03', 'data': '\x7f\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0x7fffffffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x03', 'data': '\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0xffffffffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x04', 'data': '\x00\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0xffffffffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x04', 'data': '\x80\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0x7fffffffffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x04', 'data': '\x7f\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0x7fffffffffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x04', 'data': '\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0x7fffffffffffffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x06', 'data': '\x7f\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0x7fffffffffffffffffffffffffffff, 'length_in_schema': True, 'schema': '\x10\x06', 'data': '\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0, 'length_in_schema': False, 'schema': '\x18', 'data': '\x00'},
-        #{'value': 0x0f, 'length_in_schema': False, 'schema': '\x18', 'data': '\x0f'},
-        #{'value': -0x0f, 'length_in_schema': False, 'schema': '\x18', 'data': '\x8f'},
-        #{'value': 0xff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x10\xff'},
+        # length in schema
+        # regular length 1 byte
+        {'value': 0, 'length_in_schema': True, 'schema': '\x00', 'data': '\x00'},
+        {'value': 0x7f, 'length_in_schema': True, 'schema': '\x00', 'data': '\x7f'},
+        {'value': -0x7f, 'length_in_schema': True, 'schema': '\x00', 'data': '\xff'},
+        # regular length 2 byte
+        {'value': 0xff, 'length_in_schema': True, 'schema': '\x04', 'data': '\x00\xff'},
+        {'value': -0xff, 'length_in_schema': True, 'schema': '\x04', 'data': '\x80\xff'},
+        {'value': 0x7fff, 'length_in_schema': True, 'schema': '\x04', 'data': '\x7f\xff'},
+        {'value': -(0x7fff), 'length_in_schema': True, 'schema': '\x04', 'data': '\xff\xff'},
+        # regular length 4 bytes
+        {'value': 0xffff, 'length_in_schema': True, 'schema': '\x08', 'data': '\x00\x00\xff\xff'},
+        {'value': -(0xffff), 'length_in_schema': True, 'schema': '\x08', 'data': '\x80\x00\xff\xff'},
+        {'value': 0x7fffffff, 'length_in_schema': True, 'schema': '\x08', 'data': '\x7f\xff\xff\xff'},
+        {'value': -(0x7fffffff), 'length_in_schema': True, 'schema': '\x08', 'data': '\xff\xff\xff\xff'},
+        # regular length 8 bytes
+        {'value': 0xffffffff, 'length_in_schema': True, 'schema': '\x0c', 'data': '\x00\x00\x00\x00\xff\xff\xff\xff'},
+        {'value': -(0xffffffff), 'length_in_schema': True, 'schema': '\x0c', 'data': '\x80\x00\x00\x00\xff\xff\xff\xff'},
+        {'value': 0x7fffffffffffffff, 'length_in_schema': True, 'schema': '\x0c', 'data': '\x7f\xff\xff\xff\xff\xff\xff\xff'},
+        {'value': -(0x7fffffffffffffff), 'length_in_schema': True, 'schema': '\x0c', 'data': '\xff\xff\xff\xff\xff\xff\xff\xff'},
+        # outsize length
+        {'value': 0, 'length_in_schema': True, 'schema': '\x10'+chr(0), 'data': '\x00\x00'},
+        {'value': 0x7f, 'length_in_schema': True, 'schema': '\x10'+chr(0), 'data': '\x7f'},
+        {'value': -0x7f, 'length_in_schema': True, 'schema': '\x10'+chr(0), 'data': '\xff'},
+
+        {'value': (1<<8*1)-1, 'length_in_schema': True, 'schema': '\x10'+chr(1), 'data': '\x00'+'\xff'*1},
+        {'value': -((1<<8*1)-1), 'length_in_schema': True, 'schema': '\x10'+chr(1), 'data': '\x80'+'\xff'*1},
+        {'value': (0x7f<<8*1)|(1<<8*1)-1, 'length_in_schema': True, 'schema': '\x10'+chr(1), 'data': '\x7f'+'\xff'*1},
+        {'value': -((0x7f<<8*1)|(1<<8*1)-1), 'length_in_schema': True, 'schema': '\x10'+chr(1), 'data': '\xff'+'\xff'*1},
+
+        {'value': (1<<8*0xff)-1, 'length_in_schema': True, 'schema': '\x10'+chr(0xff), 'data': '\x00'+'\xff'*0xff},
+        {'value': -((1<<8*0xff)-1), 'length_in_schema': True, 'schema': '\x10'+chr(0xff), 'data': '\x80'+'\xff'*0xff},
+        {'value': (0x7f<<8*0xff)|(1<<8*0xff)-1, 'length_in_schema': True, 'schema': '\x10'+chr(0xff), 'data': '\x7f'+'\xff'*0xff},
+        {'value': -((0x7f<<8*0xff)|(1<<8*0xff)-1), 'length_in_schema': True, 'schema': '\x10'+chr(0xff), 'data': '\xff'+'\xff'*0xff},
+
+        {'value': (1<<8*0x1ff)-1, 'length_in_schema': True, 'schema': '\x12'+struct.pack('>H', 0x1ff), 'data': '\x00'+'\xff'*0x1ff},
+        {'value': -((1<<8*0x1ff)-1), 'length_in_schema': True, 'schema': '\x12'+struct.pack('>H', 0x1ff), 'data': '\x80'+'\xff'*0x1ff},
+        {'value': (0x7f<<8*0xffff)|(1<<8*0xffff)-1, 'length_in_schema': True, 'schema': '\x12'+struct.pack('>H', 0xffff), 'data': '\x7f'+'\xff'*0xffff},
+        {'value': -((0x7f<<8*0xffff)|(1<<8*0xffff)-1), 'length_in_schema': True, 'schema': '\x12'+struct.pack('>H', 0xffff), 'data': '\xff'+'\xff'*0xffff},
+
+        {'value': (1<<8*0x1ffff)-1, 'length_in_schema': True, 'schema': '\x14'+struct.pack('>I', 0x1ffff), 'data': '\x00'+'\xff'*0x1ffff},
+        {'value': -((1<<8*0x1ffff)-1), 'length_in_schema': True, 'schema': '\x14'+struct.pack('>I', 0x1ffff), 'data': '\x80'+'\xff'*0x1ffff},
+
+        # length in data
+
+        {'value': 0, 'length_in_schema': False, 'schema': '\x18', 'data': '\x00'},
+        {'value': 0x0f, 'length_in_schema': False, 'schema': '\x18', 'data': '\x0f'},
+        {'value': -0x0f, 'length_in_schema': False, 'schema': '\x18', 'data': '\x8f'},
+
+        {'value': 0x1f, 'length_in_schema': False, 'schema': '\x18', 'data': '\x10\x1f'},
+        {'value': -0x1f, 'length_in_schema': False, 'schema': '\x18', 'data': '\x90\x1f'},
+        {'value': 0x0fff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x1f\xff'},
+        {'value': -0x0fff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x9f\xff'},
+
         #{'value': -0xff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x90\xff'},
         #{'value': 0x0fff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x1f\xff'},
         #{'value': -0x0fff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x9f\xff'},
+
         #{'value': 0x0fffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x2f\xff\xff\xff'},
         #{'value': -0x0fffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\xaf\xff\xff\xff'},
         #{'value': 0x0fffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x3f\xff\xff\xff\xff\xff\xff\xff'},
