@@ -1,5 +1,4 @@
-#!/usr/bin/env python2.7
-# -*- coding: utf-8 -*-
+
 import json
 from decimal import Decimal
 
@@ -34,6 +33,7 @@ class NotFound:
 not_find = NotFound()
 
 
+"""
 class Byte:
     def __init__(self, variable=0):
         self.variable = variable
@@ -79,6 +79,7 @@ class IntStrConverter:
 
     def convert_data_to_int(self):
         return int(self.variable.encode('hex'), 16)
+"""
 
 
 class Integer:
@@ -87,106 +88,30 @@ class Integer:
     765 bits
     000 reserverd for type bits
 
-     432 bits
-    ~000~ regular length 1 byte
-    ~001~ regular length 2 byte
-    ~010~ regular length 4 byte
-    ~011~ regular length 8 byte
-    ~10~  outsize length define aftert this bits
-    ~11~  length define in data
-
-    21 bits define outsize length in bytes if outsize length gefined in schema
-    00 outsize length 1 byte
-    01 outsize length 2 byte
-    10 outsize length 4 byte
-    11 outsize length 8 byte
-
-    0 bit
-    0 reserved
-
-    outsize length of number in bytes defined as (length - max_regular_length - 1)
-    because regular length include length ap to 8 bytes
-    '''
-
-    schema_bit_length_is_outsize = 4
-    schema_bit_length_define_in_data = 3
-    schema_bit_length_low_bit = 2
-    schema_bit_outsize_length_low_bit = 1
+     43 bits
+    ~00~ regular length 1 byte
+    ~01~ regular length 2 byte
+    ~10~ regular length 4 byte
+    ~11~ regular length 8 byte
 
     '''
-    data
-    7 reserved for sigh bit
-    6 define/undefine outsize length depends on bit 4 in schema
-    5 length of number/length depends on bit 6
-    4 length of number/length depends on bit 6
-    rest part number or length of number outsize length
-    '''
 
-    data_sigh_bit              = 7
-    data_length_is_outsize_bit = 6  # if this bit set as 1 no need in data_high_size_bit and data_low_size_bits
-    data_length_low_bit        = 4
+    schema_bit_length_bit = 3
 
     regular_length_bits_value  = (0, 1, 2, 3)
     regular_length_bytes       = (1, 2, 4, 8)
-    max_regular_numbers = (
-        0x7f,
-        0x7fff,
-        0x7fffffff,
-        0x7fffffffffffffff)
-    max_regular_number_length_in_data = (
-        0x0f,
-        0x0fff,
-        0x0fffffff,
-        0x0fffffffffffffff)
 
-    def __init__(self, length_in_schema=True):
-        self.length_in_schema = length_in_schema
-
-    def __number_without_sign(self):
-        return self.number if self.number > 0 else -self.number
-
-    def __check_variable_is_compliance_border(self, variable, border):
-        if variable > border:
-            return False
-        return True
-
-    def __put_sigh_to_data(self):
-        if self.number < 0:
-            number_byte = Byte()
-            number_byte.set_bit(self.data_sigh_bit)
-            self.data_int |= number_byte.get()
-            self.number *= -1
-
-    def __put_length_to_data(self):
-        if self.length_in_bytes > self.max_regular_length:
-            self.__put_outsize_length_to_data()
-        else:
-            self.__put_regular_length_in_data()
-
-    def __put_type_in_schema(self):
-        self.schema_int = Type(self).type_index
-
-    def __make_schema(self):
-        self.__put_type_in_schema()
-        if self.length_in_schema:
-            self.__put_length_in_schema()
-        else:
-            self.__set_in_schema_length_in_data()
-        return IntStrConverter(self.schema_int).convert_int_to_data()
-
-    def __make_data(self):
-        return
+    def __init__(self):
+        if isinstance(variable, (int, long)):
+           self.number = variable
+        if isinstance(variable, str):
+            self.data = variable
 
     def pack(self, value):
-        self.number = value
-        return self.__make_schema(), self.__make_data()
+        return None, None
 
     def unpack(self, schema, data):
-        self.schema = schema
-        self.data = data
-        self.__unpack_schema()
-        self.__unpack_data()
-        return self.number, self.rest_schema, self.rest_data
+        return None, None
 
 
 class Float:
@@ -196,60 +121,10 @@ class Float:
         if isinstance(variable, str):
             self.data = variable
 
-    def __get_mantissa_and_exponent_from_number(self):
-        self.__check_exponent()
-        self.__check_dot()
-        self.__cut_right_zeros()
-        self.mantissa = int(self.mantissa)
-
-    def __cut_right_zeros(self):
-        self.exponent += len(self.mantissa) - len(self.mantissa.rstrip('0'))
-        self.mantissa = self.mantissa.rstrip('0')
-
-    def __check_exponent(self):
-        if 'e' in str(self.number):
-            self.mantissa, self.exponent = str(self.number).split('e')
-        else:
-            self.mantissa = str(self.number)
-            self.exponent = '0'
-
-    def __check_dot(self):
-        if '.' in self.mantissa:
-            self.exponent = int(self.exponent) - len(self.mantissa) + self.mantissa.index('.') + 1
-            self.mantissa = self.mantissa.replace('.', '')
-        else:
-            self.exponent = int(self.exponent)
-
-    def __put_exponent_to_data(self):
-        _, exponent_in_data_format = Integer(self.exponent).pack
-        self.data = exponent_in_data_format
-
-    def __put_mantissa_to_data(self):
-        _, mantissa_in_data_format = Integer(self.mantissa).pack
-        self.data += mantissa_in_data_format
-
-    def __get_exponent_from_data(self):
-        self.exponent, self.data = Integer(self.data).unpack
-
-    def __get_mantissa_from_data(self):
-        self.mantissa, self.data = Integer(self.data).unpack
-
-    def __build_float(self):
-        self.number = float(self.mantissa * 10 ** self.exponent)
-
-    @property
     def pack(self):
-        self.__get_mantissa_and_exponent_from_number()
-        self.__put_exponent_to_data()
-        self.__put_mantissa_to_data()
-        self.map = Type(self).pack
         return self.map, self.data
 
-    @property
     def unpack(self):
-        self.__get_exponent_from_data()
-        self.__get_mantissa_from_data()
-        self.__build_float()
         return self.number, self.data
 
 
@@ -405,8 +280,6 @@ class Type:
         (bool,       Boolean),
         (type(None), Boolean),
         (list,       List),
-        # set:
-        # tuple:
         (dict,       Dictionary),
     )
 
@@ -657,78 +530,29 @@ def tests():
     print 'Integer'
 
     pack_test_cases = [
-        # length in schema
-        # regular length 1 byte
-        {'value': 0, 'length_in_schema': True, 'schema': '\x00', 'data': '\x00'},
-        {'value': 0x7f, 'length_in_schema': True, 'schema': '\x00', 'data': '\x7f'},
-        {'value': -0x7f, 'length_in_schema': True, 'schema': '\x00', 'data': '\xff'},
-        # regular length 2 byte
-        {'value': 0xff, 'length_in_schema': True, 'schema': '\x04', 'data': '\x00\xff'},
-        {'value': -0xff, 'length_in_schema': True, 'schema': '\x04', 'data': '\x80\xff'},
-        {'value': 0x7fff, 'length_in_schema': True, 'schema': '\x04', 'data': '\x7f\xff'},
-        {'value': -(0x7fff), 'length_in_schema': True, 'schema': '\x04', 'data': '\xff\xff'},
-        # regular length 4 bytes
-        {'value': 0xffff, 'length_in_schema': True, 'schema': '\x08', 'data': '\x00\x00\xff\xff'},
-        {'value': -(0xffff), 'length_in_schema': True, 'schema': '\x08', 'data': '\x80\x00\xff\xff'},
-        {'value': 0x7fffffff, 'length_in_schema': True, 'schema': '\x08', 'data': '\x7f\xff\xff\xff'},
-        {'value': -(0x7fffffff), 'length_in_schema': True, 'schema': '\x08', 'data': '\xff\xff\xff\xff'},
-        # regular length 8 bytes
-        {'value': 0xffffffff, 'length_in_schema': True, 'schema': '\x0c', 'data': '\x00\x00\x00\x00\xff\xff\xff\xff'},
-        {'value': -(0xffffffff), 'length_in_schema': True, 'schema': '\x0c', 'data': '\x80\x00\x00\x00\xff\xff\xff\xff'},
-        {'value': 0x7fffffffffffffff, 'length_in_schema': True, 'schema': '\x0c', 'data': '\x7f\xff\xff\xff\xff\xff\xff\xff'},
-        {'value': -(0x7fffffffffffffff), 'length_in_schema': True, 'schema': '\x0c', 'data': '\xff\xff\xff\xff\xff\xff\xff\xff'},
-        # outsize length
-        {'value': 0, 'length_in_schema': True, 'schema': '\x10'+chr(0), 'data': '\x00\x00'},
-        {'value': 0x7f, 'length_in_schema': True, 'schema': '\x10'+chr(0), 'data': '\x7f'},
-        {'value': -0x7f, 'length_in_schema': True, 'schema': '\x10'+chr(0), 'data': '\xff'},
-
-        {'value': (1<<8*1)-1, 'length_in_schema': True, 'schema': '\x10'+chr(1), 'data': '\x00'+'\xff'*1},
-        {'value': -((1<<8*1)-1), 'length_in_schema': True, 'schema': '\x10'+chr(1), 'data': '\x80'+'\xff'*1},
-        {'value': (0x7f<<8*1)|(1<<8*1)-1, 'length_in_schema': True, 'schema': '\x10'+chr(1), 'data': '\x7f'+'\xff'*1},
-        {'value': -((0x7f<<8*1)|(1<<8*1)-1), 'length_in_schema': True, 'schema': '\x10'+chr(1), 'data': '\xff'+'\xff'*1},
-
-        {'value': (1<<8*0xff)-1, 'length_in_schema': True, 'schema': '\x10'+chr(0xff), 'data': '\x00'+'\xff'*0xff},
-        {'value': -((1<<8*0xff)-1), 'length_in_schema': True, 'schema': '\x10'+chr(0xff), 'data': '\x80'+'\xff'*0xff},
-        {'value': (0x7f<<8*0xff)|(1<<8*0xff)-1, 'length_in_schema': True, 'schema': '\x10'+chr(0xff), 'data': '\x7f'+'\xff'*0xff},
-        {'value': -((0x7f<<8*0xff)|(1<<8*0xff)-1), 'length_in_schema': True, 'schema': '\x10'+chr(0xff), 'data': '\xff'+'\xff'*0xff},
-
-        {'value': (1<<8*0x1ff)-1, 'length_in_schema': True, 'schema': '\x12'+struct.pack('>H', 0x1ff), 'data': '\x00'+'\xff'*0x1ff},
-        {'value': -((1<<8*0x1ff)-1), 'length_in_schema': True, 'schema': '\x12'+struct.pack('>H', 0x1ff), 'data': '\x80'+'\xff'*0x1ff},
-        {'value': (0x7f<<8*0xffff)|(1<<8*0xffff)-1, 'length_in_schema': True, 'schema': '\x12'+struct.pack('>H', 0xffff), 'data': '\x7f'+'\xff'*0xffff},
-        {'value': -((0x7f<<8*0xffff)|(1<<8*0xffff)-1), 'length_in_schema': True, 'schema': '\x12'+struct.pack('>H', 0xffff), 'data': '\xff'+'\xff'*0xffff},
-
-        {'value': (1<<8*0x1ffff)-1, 'length_in_schema': True, 'schema': '\x14'+struct.pack('>I', 0x1ffff), 'data': '\x00'+'\xff'*0x1ffff},
-        {'value': -((1<<8*0x1ffff)-1), 'length_in_schema': True, 'schema': '\x14'+struct.pack('>I', 0x1ffff), 'data': '\x80'+'\xff'*0x1ffff},
-
-        # length in data
-
-        {'value': 0, 'length_in_schema': False, 'schema': '\x18', 'data': '\x00'},
-        {'value': 0x0f, 'length_in_schema': False, 'schema': '\x18', 'data': '\x0f'},
-        {'value': -0x0f, 'length_in_schema': False, 'schema': '\x18', 'data': '\x8f'},
-
-        {'value': 0x1f, 'length_in_schema': False, 'schema': '\x18', 'data': '\x10\x1f'},
-        {'value': -0x1f, 'length_in_schema': False, 'schema': '\x18', 'data': '\x90\x1f'},
-        {'value': 0x0fff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x1f\xff'},
-        {'value': -0x0fff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x9f\xff'},
-
-        #{'value': -0xff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x90\xff'},
-        #{'value': 0x0fff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x1f\xff'},
-        #{'value': -0x0fff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x9f\xff'},
-
-        #{'value': 0x0fffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x2f\xff\xff\xff'},
-        #{'value': -0x0fffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\xaf\xff\xff\xff'},
-        #{'value': 0x0fffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x3f\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0x0fffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\xbf\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0xffffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x40\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0xffffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\xc0\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0xfffffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x41\x0f\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0xfffffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\xc1\x0f\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': 0xffffffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\x41\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
-        #{'value': -0xffffffffffffffffff, 'length_in_schema': False, 'schema': '\x18', 'data': '\xc1\xff\xff\xff\xff\xff\xff\xff\xff\xff'},
+        # regular length 1 byte (b)
+        {'value': 0, 'schema': '\x00', 'data': '\x00'},
+        {'value': 0x7f, 'schema': '\x00', 'data': '\x7f'},
+        {'value': -0x80, 'schema': '\x00', 'data': '\x80'},
+        # regular length 2 byte (h)
+        {'value': 0x80, 'schema': '\x04', 'data': '\x00\x80'},
+        {'value': -0x81, 'schema': '\x04', 'data': '\xff\x81'},
+        {'value': 0x7fff, 'schema': '\x04', 'data': '\x7f\xff'},
+        {'value': -(0x8000), 'schema': '\x04', 'data': '\x80\x00'},
+        # regular length 4 bytes (i)
+        {'value': 0x8000, 'schema': '\x08', 'data': '\x00\x00\x80\x00'},
+        {'value': -(0x8001), 'schema': '\x08', 'data': '\xff\xff\x7f\xff'},
+        {'value': 0x7fffffff, 'schema': '\x08', 'data': '\x7f\xff\xff\xff'},
+        {'value': -(0x80000000), 'schema': '\x08', 'data': '\x80\x00\x00\x00'},
+        # regular length 8 bytes (q)
+        {'value': 0x80000000, 'schema': '\x0c', 'data': '\x00\x00\x00\x00\x80\x00\x00\x00'},
+        {'value': -(0x80000001), 'schema': '\x0c', 'data': '\xff\xff\xff\xff\x7f\xff\xff\xff'},
+        {'value': 0x7fffffffffffffff, 'schema': '\x0c', 'data': '\x7f\xff\xff\xff\xff\xff\xff\xff'},
+        {'value': -(0x8000000000000000), 'schema': '\x0c', 'data': '\x80\x00\x00\x00\x00\x00\x00\x00'},
     ]
 
     for case in pack_test_cases:
-        schema, data = Integer(length_in_schema=case['length_in_schema']).pack(case['value'])
+        schema, data = Integer().pack(case['value'])
         if schema != case['schema']:
             print 'Error pack schema', hex(case['value']), schema.encode('hex'), case['schema'].encode('hex')
 
