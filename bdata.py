@@ -1,4 +1,4 @@
-
+import struct
 import json
 from decimal import Decimal
 
@@ -33,53 +33,56 @@ class NotFound:
 not_find = NotFound()
 
 
-"""
 class Byte:
     def __init__(self, variable=0):
-        self.variable = variable
+        if isinstance(variable, int):
+            self.number = variable
+        if isinstance(variable, str):
+            self.number = ord(variable)
+
+    def shift_bits(self, bit_number):
+        self.number <<= bit_number
+        return self
 
     def get(self):
-        return self.variable
+        return chr(self.number)
 
-    def set_bit(self, bit_number):
-        self.variable |= 1 << bit_number
-        return self.variable
+    def _or(self, data1, data2):
+        return chr(ord(data1) | ord(data2))
 
+
+    """
     def make_mask(self, mask_size_in_byte=1):
         self.variable = ~self.variable & (1 << 8 * mask_size_in_byte) - 1
         return self.variable
-
-    def shift_bits(self, shift_size):
-        self.variable <<= shift_size
-        return self.variable
-
-    def shift_byte(self, shift_size):
-        self.variable <<= 8 * shift_size
-        return self.variable
-
-    def get_maximal_value(self, start_bit, bytes=1):
-        self.set_bit(start_bit+1)
-        self.shift_byte(bytes-1)
-        self.variable -= 1
-        return self.variable
+    """
 
 
-class IntStrConverter:
-    def __init__(self, variable):
-        self.variable = variable
 
-    def convert_int_to_data(self, length=1):
-        hex_string = '{:x}'.format(self.variable)
-        if len(hex_string) % 2: hex_string = '0' + hex_string
+class Number:
+    def pack(n):
+        if n < 0xfd:
+            return chr(n)
+        elif n < 1<<16:
+            return '\xfd' + struct.pack ('>H', n)
+        elif n < 1<<32:
+            return '\xfe' + struct.pack ('>I', n)
+        else:
+            return '\xff' + struct.pack ('>Q', n)
 
-        if len(hex_string) / 2 < length:
-            hex_string = '00' * (length - len(hex_string) / 2) + hex_string
-
-        return hex_string.decode('hex')
-
-    def convert_data_to_int(self):
-        return int(self.variable.encode('hex'), 16)
-"""
+    def unpack(data):
+        n0, = unpack_pos ('<B', data[0])
+        if n0 < 0xfd:
+            return n0, data[1:]
+        elif n0 == 0xfd:
+            n1, = unpack_pos ('<H', data[1:3])
+            return n1, data[3:]
+        elif n0 == 0xfe:
+            n2, = unpack_pos ('<I', data[1:5])
+            return n2, data[5:]
+        elif n0 == 0xff:
+            n3, = unpack_pos ('<Q', data[1:9])
+            return n3, data[9:]
 
 
 class Integer:
@@ -97,21 +100,39 @@ class Integer:
     '''
 
     schema_bit_length_bit = 3
+    schema_max_length_sign = 3
+    struct_format = ['b', 'h', 'l', 'q']
+    byte_order = '>'
 
-    regular_length_bits_value  = (0, 1, 2, 3)
-    regular_length_bytes       = (1, 2, 4, 8)
+    def __define_sign_of_size(self):
+        for length_sign in xrange(self.schema_max_length_sign+1):
+            max_vol = (1<<(8*(1<<length_sign)))/2-1
+            min_vol = -(1<<(8*(1<<length_sign)))/2
+            if min_vol <= self.number <= max_vol:
+                self.length_sign = length_sign
+                return
+        raise Exception('int out of size {}'.format(self.number))
 
-    def __init__(self):
-        if isinstance(variable, (int, long)):
-           self.number = variable
-        if isinstance(variable, str):
-            self.data = variable
+    def __pack_schema(self):
+        schema_type = Type().pack(self)
+        schema_length_sign = Byte(self.length_sign).shift_bits(self.schema_bit_length_bit).get()
+        self.schema = Byte()._or(schema_type, schema_length_sign)
 
-    def pack(self, value):
-        return None, None
+    def __pack_number(self):
+        fmt = self.byte_order+self.struct_format[self.length_sign]
+        self.data = struct.pack(fmt, self.number)
+
+    def pack(self, number):
+        self.number = number
+        self.__define_sign_of_size()
+        self.__pack_schema()
+        self.__pack_number()
+        return self.schema, self.data
 
     def unpack(self, schema, data):
-        return None, None
+        self.schema = schema
+        self.data = data
+        return 0, ''
 
 
 class Float:
@@ -161,14 +182,12 @@ class String:
         self.map = Type(self).pack
         return self.map, self.data
 
-    """
     @property
     def unpack(self):
         self.__get_length_in_data()
         self.__check_variable_size_is_correct()
         self.__get_variable_from_data()
         return self.variable, self.data
-    """
 
 
 class Boolean:
@@ -198,7 +217,7 @@ class Boolean:
         return self.variable, rest_part_of_data
 
 
-class List(IntStrConverter):
+class List:
     # TODO
     # bit
     #   7 unequeal/equal type objects                    0/1
@@ -270,7 +289,7 @@ class Type:
     # type bits mark as 1
     11100000
     '''
-    type_low_bit = 5
+    type_bit = 5
 
     types_mapping = (
         (int,        Integer),
@@ -293,32 +312,14 @@ class Type:
         Contraction,
     )
 
-    def __init__(self, variable):
+    def pack(self, obj):
+        for class_type in self.types_index:
+            if isinstance(obj, class_type):
+                obj_index = self.types_index.index(class_type)
+                return Byte(obj_index).shift_bits(self.type_bit).get()
+        raise Exception('wrong type data {}'.format(obj))
 
-        if isinstance(variable, str):
-            self.data = variable
-        else:
-            self.__define_type(variable)
-
-    def __define_type(self, variable):
-        for real_type, data_type in self.types_mapping:
-            if not isinstance(variable, real_type) and not isinstance(variable, data_type):
-                continue
-            self.int_data = self.types_index.index(data_type)
-            break
-
-    @property
-    def type_index(self):
-        return self.int_data << self.type_low_bit
-
-    '''
-    @property
-    def pack(self):
-        return self.data
-    '''
-
-    @property
-    def unpack(self):
+    def unpack(self, schema):
         pass
 
 
@@ -535,129 +536,58 @@ def tests():
         {'value': 0x7f, 'schema': '\x00', 'data': '\x7f'},
         {'value': -0x80, 'schema': '\x00', 'data': '\x80'},
         # regular length 2 byte (h)
-        {'value': 0x80, 'schema': '\x04', 'data': '\x00\x80'},
-        {'value': -0x81, 'schema': '\x04', 'data': '\xff\x81'},
-        {'value': 0x7fff, 'schema': '\x04', 'data': '\x7f\xff'},
-        {'value': -(0x8000), 'schema': '\x04', 'data': '\x80\x00'},
-        # regular length 4 bytes (i)
-        {'value': 0x8000, 'schema': '\x08', 'data': '\x00\x00\x80\x00'},
-        {'value': -(0x8001), 'schema': '\x08', 'data': '\xff\xff\x7f\xff'},
-        {'value': 0x7fffffff, 'schema': '\x08', 'data': '\x7f\xff\xff\xff'},
-        {'value': -(0x80000000), 'schema': '\x08', 'data': '\x80\x00\x00\x00'},
+        {'value': 0x80, 'schema': '\x08', 'data': '\x00\x80'},
+        {'value': -0x81, 'schema': '\x08', 'data': '\xff\x7f'},
+        {'value': 0x7fff, 'schema': '\x08', 'data': '\x7f\xff'},
+        {'value': -(0x8000), 'schema': '\x08', 'data': '\x80\x00'},
+        # regular length 4 bytes (l)
+        {'value': 0x8000, 'schema': '\x10', 'data': '\x00\x00\x80\x00'},
+        {'value': -(0x8001), 'schema': '\x10', 'data': '\xff\xff\x7f\xff'},
+        {'value': 0x7fffffff, 'schema': '\x10', 'data': '\x7f\xff\xff\xff'},
+        {'value': -(0x80000000), 'schema': '\x10', 'data': '\x80\x00\x00\x00'},
         # regular length 8 bytes (q)
-        {'value': 0x80000000, 'schema': '\x0c', 'data': '\x00\x00\x00\x00\x80\x00\x00\x00'},
-        {'value': -(0x80000001), 'schema': '\x0c', 'data': '\xff\xff\xff\xff\x7f\xff\xff\xff'},
-        {'value': 0x7fffffffffffffff, 'schema': '\x0c', 'data': '\x7f\xff\xff\xff\xff\xff\xff\xff'},
-        {'value': -(0x8000000000000000), 'schema': '\x0c', 'data': '\x80\x00\x00\x00\x00\x00\x00\x00'},
+        {'value': 0x80000000, 'schema': '\x18', 'data': '\x00\x00\x00\x00\x80\x00\x00\x00'},
+        {'value': -(0x80000001), 'schema': '\x18', 'data': '\xff\xff\xff\xff\x7f\xff\xff\xff'},
+        {'value': 0x7fffffffffffffff, 'schema': '\x18', 'data': '\x7f\xff\xff\xff\xff\xff\xff\xff'},
+        {'value': -(0x8000000000000000), 'schema': '\x18', 'data': '\x80\x00\x00\x00\x00\x00\x00\x00'},
     ]
 
     for case in pack_test_cases:
         schema, data = Integer().pack(case['value'])
         if schema != case['schema']:
-            print 'Error pack schema', hex(case['value']), schema.encode('hex'), case['schema'].encode('hex')
+            print 'Error pack schema', \
+                "value:",  hex(case['value']), \
+                "got schema:", schema.encode('hex'), \
+                "expected schema:", case['schema'].encode('hex')
 
         if data != case['data']:
-            print 'Error pack data', hex(case['value']), data.encode('hex'), case['data'].encode('hex')
+            print 'Error pack data', \
+                "value", hex(case['value']), \
+                "got data:", data.encode('hex'), \
+                "expected data", case['data'].encode('hex')
 
+    for case in pack_test_cases:
+        value, tail =
     '''
-
-    VARIABLE, SCHEMA, DATA = 0, 1, 2
-    additional_data = '\xff'
-
-    print '-' * 10
-    print 'Integer'
-
-    pack_test_cases = [
-        {'variable': 0, 'schema': '\x00', 'data':'\x00'},
-        {'variable': 0x0f, 'schema': '\x00', 'data': '\x0f'},
-        {'variable': -0x0f, 'schema': '\x00', 'data': '\x8f'},
-        [0xfff, '\x21\xff'],
-        [0x1fff, '\x3f\xff'],
-        [-0x1fff, '\xbf\xff'],
-        [0x1fffffff, '\x5f\xff\xff\xff'],
-        [-0x1fffffff, '\xdf\xff\xff\xff'],
-        [0x1fffffffffffffff, '\x7f\xff\xff\xff\xff\xff\xff\xff'],
-        [-0x1fffffffffffffff, '\xff\xff\xff\xff\xff\xff\xff\xff'],
-    ]
-
-    for test_case in pack_test_cases:
-        schema, data = Integer(test_case['variable']).pack
-        if test_case['schema'] != schema:
-            print 'False schema', hex(test_case['variable'])
-        if test_case['data']  != data:
-            print 'False data', hex(test_case['variable'])
-
-        variable, rest_part_of_data = Integer(test_case['schema'] + tast_case['data'] + additional_data).unpack
-        if variable != test_case['variable']:
-            print 'False unpack variable', hex(number)
-        if rest_part_of_data != additional_data:
-            print 'False rest data', hex(number)
-    '''
-    '''
-    try:
-        Integer(0x2fffffffffffffff).pack
-        print 'False pack exception'
-    except:
-        pass
-
-    try:
-        Integer('\xff').unpack
-        print 'False unpack exception'
-    except:
-        pass
-
-    print '-' * 10
-    print 'LongInteger'
-
-    pack_test = [0x2ffffffffffffffff, '\x09\x02\xff\xff\xff\xff\xff\xff\xff\xff']
-    _, pack_int = LongInteger(pack_test[0]).pack
-    if pack_int != pack_test[1]:
-         print 'False pack', hex(pack_test[0])
-
-    long_int, rest_part_of_data =  LongInteger(pack_test[1]+additional_data).unpack
-    if long_int != pack_test[0] or rest_part_of_data != additional_data:
-        print 'False unpack', hex(pack_test[0])
-
-    pack_test = [-0x2ffffffffffffffff, '\x89\x02\xff\xff\xff\xff\xff\xff\xff\xff']
-    _, pack_int = LongInteger(pack_test[0]).pack
-    if pack_int != pack_test[1]:
-        print 'False pack', hex(pack_test[0])
-
-    long_int, rest_part_of_data =  LongInteger(pack_test[1]+additional_data).unpack
-    if long_int != pack_test[0] or rest_part_of_data != additional_data:
-        print 'False unpack', hex(pack_test[0]), hex(long_int)
-
-    try:
-        LongInteger('').unpack
-        print 'False LongInteger unpack empty string exception'
-    except:
-        pass
-
-    try:
-        LongInteger('\x89\x02\xff').unpack
-        print 'False LongInteger unpack wrong length string exception'
-    except:
-        pass
-
     print '-' * 10
     print 'Float'
 
     pack_test = [
-        [0.0001111111,   '\x8a\x40\x10\xf4\x47'],  # -10 1111111
-        [-0.0001111111,  '\x8a\xc0\x10\xf4\x47'],  # -10 -1111111
-        [1.00000001,     '\x88\x45\xf5\xe1\x01'],  # -8 100000001
-        [-1.00000001,    '\x88\xc5\xf5\xe1\x01'],  # -8 -100000001
-        [10000000.0,     '\x07\x01'],              # 7 1
-        [-10000000.0,    '\x07\x81'],              # 7 -1
-        [1.2323435e-19,  '\x9a\x40\xbc\x0a\x6b'],  # -26 12323435
-        [-1.2323435e-19, '\x9a\xc0\xbc\x0a\x6b'],  # -26 -12323435
-        [1.1111e+19,     '\x0f\x40\x00\x2b\x67'],  # 15 11111
-        [-1.1111e+19,    '\x0f\xc0\x00\x2b\x67'],  # 15 -11111
+        {'value': 0.0001111111,   'schema': '0x00', 'data': '\x8a\x40\x10\xf4\x47'},  # -10 1111111
+        {'value': -0.0001111111,  'schema': '0x00', 'data': '\x8a\xc0\x10\xf4\x47'},  # -10 -1111111
+        {'value': 1.00000001,     'schema': '0x00', 'data': '\x88\x45\xf5\xe1\x01'},  # -8 100000001
+        {'value': -1.00000001,    'schema': '0x00', 'data': '\x88\xc5\xf5\xe1\x01'},  # -8 -100000001
+        {'value': 10000000.0,     'schema': '0x00', 'data': '\x07\x01'            },  # 7 1
+        {'value': -10000000.0,    'schema': '0x00', 'data': '\x07\x81'            },  # 7 -1
+        {'value': 1.2323435e-19,  'schema': '0x00', 'data': '\x9a\x40\xbc\x0a\x6b'},  # -26 12323435
+        {'value': -1.2323435e-19, 'schema': '0x00', 'data': '\x9a\xc0\xbc\x0a\x6b'},  # -26 -12323435
+        {'value': 1.1111e+19,     'schema': '0x00', 'data': '\x0f\x40\x00\x2b\x67'},  # 15 11111
+        {'value': -1.1111e+19,    'schema': '0x00', 'data': '\x0f\xc0\x00\x2b\x67'},  # 15 -11111
     ]
 
-    for number, data in pack_test:
-        _, pack_float = Float(number).pack
-        if pack_float != data:
+    for case in pack_test:
+        schema, data = Float(number).pack
+        if data != data:
             print 'False pack', number, Float(number).pack
         float_number, rest_part_of_data = Float(data+additional_data).unpack
         if str(float_number) != str(number):
