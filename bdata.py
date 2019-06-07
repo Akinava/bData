@@ -222,24 +222,18 @@ class Boolean:
         None:  '\xff',
     }
 
-    def __init__(self, variable):
-        if isinstance(variable, (bool, type(None))):
-            self.variable = variable
-        if isinstance(variable, str):
-            self.data = variable
+    def pack(self, variable):
+        self.schema = Type().pack(self)
+        self.data = self.variables[variable]
+        return self.schema, self.data
 
-    @property
-    def pack(self):
-        self.map = Type(self).pack
-        return self.map, self.variables[self.variable]
-
-    @property
-    def unpack(self):
+    def unpack(self, schema, data):
+        self.schema = schema
+        self.data = data
         self.variable = self.variables.keys()[
             self.variables.values().index(self.data[0])
         ]
-        rest_part_of_data = self.data[1: ]
-        return self.variable, rest_part_of_data
+        return self.variable, self.schema[1:], self.data[1:]
 
 
 class List:
@@ -596,16 +590,59 @@ def tests():
                 "expected value:",  hex(case['value']), \
                 "got value:", hex(value)
         if schema_tail != additional_data:
-            print 'Error wrong schema_tail', \
+            print 'Error unpack wrong schema_tail', \
                 "value", hex(case['value']), \
                 "got schema_tail:", schema_tail.encode('hex'), \
                 "expected schema_tail:", additional_data.encode('hex')
         if data_tail != additional_data:
-            print 'Error wrong schema_tail', \
+            print 'Error unpack wrong schema_tail', \
                 "value", hex(case['value']), \
                 "got data_tail:", data_tail.encode('hex'), \
                 "expected data_tail:", additional_data.encode('hex')
 
+
+    print '-' * 10
+    print 'Boolean'
+
+    pack_test_cases = [
+        {'value': True, 'schema': '\x60', 'data': '\x01'},
+        {'value': False, 'schema': '\x60', 'data': '\x00'},
+        {'value': None, 'schema': '\x60', 'data': '\xff'},
+    ]
+
+    for case in pack_test_cases:
+        schema, data = Boolean().pack(case['value'])
+        if schema != case['schema']:
+            print 'Error pack schema', \
+                "value:",  case['value'], \
+                "got schema:", schema.encode('hex'), \
+                "expected schema:", case['schema'].encode('hex')
+
+        if data != case['data']:
+            print 'Error pack data', \
+                "value", case['value'], \
+                "got data:", data.encode('hex'), \
+                "expected data", case['data'].encode('hex')
+
+    for case in pack_test_cases:
+        value, schema_tail, data_tail = Boolean().unpack(
+            schema=case['schema']+additional_data,
+            data=case['data']+additional_data
+        )
+        if value != case['value']:
+            print 'Error unpack value', \
+                "expected value:",  case['value'], \
+                "got value:", value
+        if schema_tail != additional_data:
+            print 'Error unpack wrong schema_tail', \
+                "value", case['value'], \
+                "got schema_tail:", schema_tail.encode('hex'), \
+                "expected schema_tail:", additional_data.encode('hex')
+        if data_tail != additional_data:
+            print 'Error unpack wrong schema_tail', \
+                "value", case['value'], \
+                "got data_tail:", data_tail.encode('hex'), \
+                "expected data_tail:", additional_data.encode('hex')
 
     '''
     print '-' * 10
