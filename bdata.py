@@ -50,6 +50,15 @@ class Byte:
     def _or(self, data1, data2):
         return chr(ord(data1) | ord(data2))
 
+    def define_bits_by_number(self, number):
+        bits = 0
+        while (1<<bits)-1 < number:
+            bits += 1
+        return bits
+
+    def get_number_by_edge(self, low_bit, length):
+        return (self.number>>low_bit)&((1<<length)-1)
+
 
     """
     def make_mask(self, mask_size_in_byte=1):
@@ -129,10 +138,26 @@ class Integer:
         self.__pack_number()
         return self.schema, self.data
 
+    def __unpack_sign_of_size(self):
+        length_sign_bits = Byte().define_bits_by_number(self.schema_max_length_sign)
+        self.length_sign = Byte(self.schema[0]).get_number_by_edge(low_bit=self.schema_bit_length_bit, length=length_sign_bits)
+
+    def __unpack_schema(self):
+        self.schema_tail = self.schema[1:]
+
+    def __unpack_data(self):
+        data_lengh = 2**self.length_sign
+        fmt = self.struct_format[self.length_sign]
+        self.number, = struct.unpack(self.byte_order+fmt, self.data[:data_lengh])
+        self.data_tail = self.data[data_lengh:]
+
     def unpack(self, schema, data):
         self.schema = schema
         self.data = data
-        return 0, ''
+        self.__unpack_sign_of_size()
+        self.__unpack_schema()
+        self.__unpack_data()
+        return self.number, self.schema_tail, self.data_tail
 
 
 class Float:
@@ -269,13 +294,8 @@ class Dictionary:
 
 
 class Contraction:
-    def __init__(self, *args):
-        self.contractions = []
-        for item in args:
-            self.contractions.append(item)
-
-    def add_contraction(self, item):
-        self.contractions.append(item)
+    def __init__(self):
+        pass
 
     def pack(self, item):
         pass
@@ -567,7 +587,26 @@ def tests():
                 "expected data", case['data'].encode('hex')
 
     for case in pack_test_cases:
-        value, tail =
+        value, schema_tail, data_tail = Integer().unpack(
+            schema=case['schema']+additional_data,
+            data=case['data']+additional_data
+        )
+        if value != case['value']:
+            print 'Error unpack value', \
+                "expected value:",  hex(case['value']), \
+                "got value:", hex(value)
+        if schema_tail != additional_data:
+            print 'Error wrong schema_tail', \
+                "value", hex(case['value']), \
+                "got schema_tail:", schema_tail.encode('hex'), \
+                "expected schema_tail:", additional_data.encode('hex')
+        if data_tail != additional_data:
+            print 'Error wrong schema_tail', \
+                "value", hex(case['value']), \
+                "got data_tail:", data_tail.encode('hex'), \
+                "expected data_tail:", additional_data.encode('hex')
+
+
     '''
     print '-' * 10
     print 'Float'
