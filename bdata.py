@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import struct
 import json
 from decimal import Decimal
@@ -47,8 +49,11 @@ class Byte:
     def get(self):
         return chr(self.number)
 
-    def _or(self, data1, data2):
-        return chr(ord(data1) | ord(data2))
+    #def _or(self, data1, data2):
+    #    return chr(ord(data1) | ord(data2))
+
+    def put_number_on_place(self, number, place):
+        return chr(self.number|(number<<place))
 
     def define_bits_by_number(self, number):
         bits = 0
@@ -69,29 +74,14 @@ class Byte:
 
 
 class Number:
-    def pack(n):
-        if n < 0xfd:
-            return chr(n)
-        elif n < 1<<16:
-            return '\xfd' + struct.pack ('>H', n)
-        elif n < 1<<32:
-            return '\xfe' + struct.pack ('>I', n)
-        else:
-            return '\xff' + struct.pack ('>Q', n)
+    def pack_schema(self, schema, sign_of_size):
+        return Byte(schema).put_number_on_place(
+            number=sign_of_size,
+            place=Type.schema_bit_length_bit)
 
-    def unpack(data):
-        n0, = unpack_pos ('<B', data[0])
-        if n0 < 0xfd:
-            return n0, data[1:]
-        elif n0 == 0xfd:
-            n1, = unpack_pos ('<H', data[1:3])
-            return n1, data[3:]
-        elif n0 == 0xfe:
-            n2, = unpack_pos ('<I', data[1:5])
-            return n2, data[5:]
-        elif n0 == 0xff:
-            n3, = unpack_pos ('<Q', data[1:9])
-            return n3, data[9:]
+    def unpack_sign_of_size(self, schema):
+        length_of_bits = Byte().define_bits_by_number(Type.schema_max_sign_of_size)
+        return Byte(schema).get_number_by_edge(Type.schema_bit_length_bit, length_of_bits)
 
 
 class Integer:
@@ -108,53 +98,55 @@ class Integer:
 
     '''
 
-    schema_bit_length_bit = 3
-    schema_max_length_sign = 3
-    struct_format = ['b', 'h', 'l', 'q']
+    struct_format = ['b', 'h', 'i', 'q']
     byte_order = '>'
 
     def __define_sign_of_size(self):
-        for length_sign in xrange(self.schema_max_length_sign+1):
-            max_vol = (1<<(8*(1<<length_sign)))/2-1
-            min_vol = -(1<<(8*(1<<length_sign)))/2
+        for sign_of_size in xrange(Type.schema_max_sign_of_size+1):
+            max_vol = (1<<(8*(1<<sign_of_size)))/2-1
+            min_vol = -(1<<(8*(1<<sign_of_size)))/2
             if min_vol <= self.number <= max_vol:
-                self.length_sign = length_sign
+                self.sign_of_size = sign_of_size
                 return
         raise Exception('int out of size {}'.format(self.number))
 
-    def __pack_schema(self):
-        schema_type = Type().pack(self)
-        schema_length_sign = Byte(self.length_sign).shift_bits(self.schema_bit_length_bit).get()
-        self.schema = Byte()._or(schema_type, schema_length_sign)
+    def __puck_type(self):
+        self.schema = Type().pack(self)
 
-    def __pack_number(self):
-        fmt = self.byte_order+self.struct_format[self.length_sign]
+    def __puck_sign_of_size(self):
+        self.schema = Number().pack_schema(self.schema, self.sign_of_size)
+
+    def __pack_schema(self):
+        self.__puck_type()
+        self.__puck_sign_of_size()
+
+    def __pack_sign_of_size(self):
+        fmt = self.byte_order+self.struct_format[self.sign_of_size]
         self.data = struct.pack(fmt, self.number)
 
     def pack(self, number):
         self.number = number
         self.__define_sign_of_size()
         self.__pack_schema()
-        self.__pack_number()
+        self.__pack_sign_of_size()
         return self.schema, self.data
 
     def __unpack_sign_of_size(self):
-        length_sign_bits = Byte().define_bits_by_number(self.schema_max_length_sign)
-        self.length_sign = Byte(self.schema[0]).get_number_by_edge(low_bit=self.schema_bit_length_bit, length=length_sign_bits)
+        self.sign_of_size = Number().unpack_sign_of_size(self.schema[0])
 
     def __unpack_schema(self):
+        self.__unpack_sign_of_size()
         self.schema_tail = self.schema[1:]
 
     def __unpack_data(self):
-        data_lengh = 2**self.length_sign
-        fmt = self.struct_format[self.length_sign]
+        data_lengh = 2**self.sign_of_size
+        fmt = self.struct_format[self.sign_of_size]
         self.number, = struct.unpack(self.byte_order+fmt, self.data[:data_lengh])
         self.data_tail = self.data[data_lengh:]
 
     def unpack(self, schema, data):
         self.schema = schema
         self.data = data
-        self.__unpack_sign_of_size()
         self.__unpack_schema()
         self.__unpack_data()
         return self.number, self.schema_tail, self.data_tail
@@ -175,44 +167,62 @@ class Float:
 
 
 class String:
-    def __init__(self, variable='', data=''):
-        if data == '':
-            self.variable = variable
-        else:
-            self.data = data
-
     def __check_variable_size_is_correct(self):
         if len(self.data) >= self.length:
             return
-        raise Exception('data length less then {}'.format(self.length))
+        raise Exception('data size less then {}'.format(self.length))
 
-    def __put_length_to_data(self):
-        _, length_in_data_format = Integer(len(self.variable)).pack
-        self.data = length_in_data_format
+    def __puck_type(self):
+        self.schema = Type().pack(self)
 
-    def __put_variablr_to_data(self):
-        self.data += self.variable
+    def __puck_data_length(self):
+        self.length = len(self.variable)
+        if self.length < 1<<8:
+            self.schema += chr(self.length)
+        elif self.length < 1<<16:
+            self.schema = Number().pack_schema(self.schema, 1) + struct.pack('>H', self.length)
+        elif self.length < 1<<32:
+            self.schema = Number().pack_schema(self.schema, 2) + struct.pack('>I', self.length)
+        else:
+            self.schema = Number().pack_schema(self.schema, 3) + struct.pack('>Q', self.length)
 
-    def __get_length_in_data(self):
-        self.length, self.data = Integer(self.data).unpack
+    def __pack_schema(self):
+        self.__puck_type()
+        self.__puck_data_length()
 
-    def __get_variable_from_data(self):
-        self.variable = self.data[0: self.length]
-        self.data = self.data[self.length: ]
+    def pack(self, variable):
+        self.variable = variable
+        self.__pack_schema()
+        return self.schema, self.variable
 
-    @property
-    def pack(self):
-        self.__put_length_to_data()
-        self.__put_variablr_to_data()
-        self.map = Type(self).pack
-        return self.map, self.data
+    def __unpack_length(self):
+        sign_of_size = Number().unpack_sign_of_size(self.schema[0])
+        if sign_of_size == 0:
+            self.length = ord(self.schema[1])
+            self.schema_tail = self.schema[2:]
+        elif sign_of_size == 1:
+            self.length, = struct.unpack('>H', self.schema[1:3])
+            self.schema_tail = self.schema[3:]
+        elif sign_of_size ==  2:
+            self.length, = struct.unpack('>I', self.schema[1:5])
+            self.schema_tail = self.schema[5:]
+        elif sign_of_size ==  3:
+            self.length, = struct.unpack('>Q', self.schema[1:9])
+            self.schema_tail = self.schema[9:]
 
-    @property
-    def unpack(self):
-        self.__get_length_in_data()
-        self.__check_variable_size_is_correct()
-        self.__get_variable_from_data()
-        return self.variable, self.data
+    def __unpack_schema(self):
+        self.__unpack_length()
+
+    def __unpack_data(self):
+        self.variable = self.data[:self.length]
+        self.data_tail = self.data[self.length:]
+
+    def unpack(self, schema, data):
+        self.schema = schema
+        self.data = data
+        self.__unpack_schema()
+        self.__unpack_data()
+        return self.variable, self.schema_tail, self.data_tail
 
 
 class Boolean:
@@ -280,7 +290,7 @@ class Dictionary:
     equal_definition = 0
     '''
 
-    def pack(self, numer):
+    def pack(self, number):
         pass
 
     def unpack(self, data):
@@ -302,8 +312,17 @@ class Type:
     '''
     # type bits mark as 1
     11100000
+
+     43 bits
+    ~00~ length 1 byte
+    ~01~ length 2 byte
+    ~10~ length 4 byte
+    ~11~ length 8 byte
+
     '''
     type_bit = 5
+    schema_bit_length_bit = 3
+    schema_max_sign_of_size = 3
 
     types_mapping = (
         (int,        Integer),
@@ -536,14 +555,10 @@ class BDATA:
         return js
 
 
-def tests():
-    print 'test start'
-
-    additional_data = '\xff'
-
+def test_integer():
     print '-' * 10
     print 'Integer'
-
+    additional_data = '\xff'
     pack_test_cases = [
         # regular length 1 byte (b)
         {'value': 0, 'schema': '\x00', 'data': '\x00'},
@@ -601,9 +616,10 @@ def tests():
                 "expected data_tail:", additional_data.encode('hex')
 
 
+def test_boolean():
     print '-' * 10
     print 'Boolean'
-
+    additional_data = '\xff'
     pack_test_cases = [
         {'value': True, 'schema': '\x60', 'data': '\x01'},
         {'value': False, 'schema': '\x60', 'data': '\x00'},
@@ -643,6 +659,65 @@ def tests():
                 "value", case['value'], \
                 "got data_tail:", data_tail.encode('hex'), \
                 "expected data_tail:", additional_data.encode('hex')
+
+
+def test_string():
+    print '-' * 10
+    print 'String'
+    additional_data = '\xff'
+    pack_test_cases = [
+        {'value': 'abc', 'schema': '\x40\x03', 'data': 'abc'},
+        {'value': '123', 'schema': '\x40\x03', 'data': '123'},
+        {'value': 'Лис', 'schema': '\x40\x06', 'data': 'Лис'},
+        {'value': '123qweйцу', 'schema': '\x40\x0c', 'data': '123qweйцу'},
+        {'value': '0'*((1<<8)-1), 'schema': '\x40'+'\xff'*1, 'data': '0'*((1<<8)-1)},
+        {'value': '0'*((1<<16)-1), 'schema': '\x48'+'\xff'*2, 'data': '0'*((1<<16)-1)},
+        #{'value': '0'*((1<<32)-1), 'schema': '\x50'+'\xff'*4, 'data': '0'*((1<<32)-1)},
+        #{'value': '0'*((1<<33)-1), 'schema': '\x70'+('\x00'*3)+'\x01'+('\xff'*4), 'data': '0'*((1<<33)-1)},
+     ]
+
+    for case in pack_test_cases:
+        schema, data = String().pack(case['value'])
+        if schema != case['schema']:
+            print 'Error pack schema', \
+                    "value:",  case['value'][:10], \
+                "got schema:", schema.encode('hex'), \
+                "expected schema:", case['schema'].encode('hex')
+
+        if data != case['data']:
+            print 'Error pack data', \
+                    "value", case['value'][:10], \
+                    "got data:", data.encode('hex')[:10], \
+                    "expected data", case['data'].encode('hex')[:10]
+
+    for case in pack_test_cases:
+        value, schema_tail, data_tail = String().unpack(
+            schema=case['schema']+additional_data,
+            data=case['data']+additional_data
+        )
+        if value != case['value']:
+            print 'Error unpack value', \
+                "expected value:",  case['value'][:10], \
+                "got value:", value[:10]
+        if schema_tail != additional_data:
+            print 'Error unpack wrong schema_tail', \
+                "value", case['value'][:10], \
+                "got schema_tail:", schema_tail.encode('hex'), \
+                "expected schema_tail:", additional_data.encode('hex')
+        if data_tail != additional_data:
+            print 'Error unpack wrong schema_tail', \
+                "value", case['value'][:10], \
+                "got data_tail:", data_tail.encode('hex'), \
+                "expected data_tail:", additional_data.encode('hex')
+
+
+def tests():
+    print 'test start'
+    test_string()
+    test_integer()
+    test_boolean()
+
+    additional_data = '\xff'
 
     '''
     print '-' * 10
