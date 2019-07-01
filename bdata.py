@@ -1,3 +1,4 @@
+#!/usr/bin/env python2.7
 # -*- coding: utf-8 -*-
 
 import struct
@@ -49,9 +50,6 @@ class Byte:
     def get(self):
         return chr(self.number)
 
-    #def _or(self, data1, data2):
-    #    return chr(ord(data1) | ord(data2))
-
     def put_number_on_place(self, number, place):
         return chr(self.number|(number<<place))
 
@@ -65,15 +63,7 @@ class Byte:
         return (self.number>>low_bit)&((1<<length)-1)
 
 
-    """
-    def make_mask(self, mask_size_in_byte=1):
-        self.variable = ~self.variable & (1 << 8 * mask_size_in_byte) - 1
-        return self.variable
-    """
-
-
-
-class Number:
+class SchemaHandler:
     def pack_schema(self, schema, sign_of_size):
         return Byte(schema).put_number_on_place(
             number=sign_of_size,
@@ -91,11 +81,10 @@ class Integer:
     000 reserverd for type bits
 
      43 bits
-    ~00~ regular length 1 byte
-    ~01~ regular length 2 byte
-    ~10~ regular length 4 byte
-    ~11~ regular length 8 byte
-
+    ~00~ length 1 byte
+    ~01~ length 2 byte
+    ~10~ length 4 byte
+    ~11~ length 8 byte
     '''
 
     struct_format = ['b', 'h', 'i', 'q']
@@ -114,7 +103,7 @@ class Integer:
         self.schema = Type().pack(self)
 
     def __puck_sign_of_size(self):
-        self.schema = Number().pack_schema(self.schema, self.sign_of_size)
+        self.schema = SchemaHandler().pack_schema(self.schema, self.sign_of_size)
 
     def __pack_schema(self):
         self.__puck_type()
@@ -132,7 +121,7 @@ class Integer:
         return self.schema, self.data
 
     def __unpack_sign_of_size(self):
-        self.sign_of_size = Number().unpack_sign_of_size(self.schema[0])
+        self.sign_of_size = SchemaHandler().unpack_sign_of_size(self.schema[0])
 
     def __unpack_schema(self):
         self.__unpack_sign_of_size()
@@ -153,17 +142,30 @@ class Integer:
 
 
 class Float:
-    def __init__(self, variable):
-        if isinstance(variable, (float, Decimal)):
-           self.number = variable
-        if isinstance(variable, str):
-            self.data = variable
+    '''
+    schema
+    765 bits
+    000~ reserverd for type bits
 
-    def pack(self):
-        return self.map, self.data
+     43 bits
+    ~00~ length 1 byte
+    ~01~ length 2 byte
+    ~10~ length 4 byte
+    ~11~ length 8 byte
+
+     0 bit
+    ~0 nan
+    ~1 inf
+    '''
+
+    def pack(self, variable):
+        self.schema = Type().pack(self)
+        print self.schema.encode('hex')
+
+        return '', ''
 
     def unpack(self):
-        return self.number, self.data
+        return '', '', ''
 
 
 class String:
@@ -180,11 +182,11 @@ class String:
         if self.length < 1<<8:
             self.schema += chr(self.length)
         elif self.length < 1<<16:
-            self.schema = Number().pack_schema(self.schema, 1) + struct.pack('>H', self.length)
+            self.schema = SchemaHandler().pack_schema(self.schema, 1) + struct.pack('>H', self.length)
         elif self.length < 1<<32:
-            self.schema = Number().pack_schema(self.schema, 2) + struct.pack('>I', self.length)
+            self.schema = SchemaHandler().pack_schema(self.schema, 2) + struct.pack('>I', self.length)
         else:
-            self.schema = Number().pack_schema(self.schema, 3) + struct.pack('>Q', self.length)
+            self.schema = SchemaHandler().pack_schema(self.schema, 3) + struct.pack('>Q', self.length)
 
     def __pack_schema(self):
         self.__puck_type()
@@ -196,7 +198,7 @@ class String:
         return self.schema, self.variable
 
     def __unpack_length(self):
-        sign_of_size = Number().unpack_sign_of_size(self.schema[0])
+        sign_of_size = SchemaHandler().unpack_sign_of_size(self.schema[0])
         if sign_of_size == 0:
             self.length = ord(self.schema[1])
             self.schema_tail = self.schema[2:]
@@ -711,11 +713,75 @@ def test_string():
                 "expected data_tail:", additional_data.encode('hex')
 
 
+def test_float():
+    print '-' * 10
+    print 'Float'
+
+    dbl = struct.unpack('>Q', struct.pack('>d', 1))[0]
+
+    sign = -1 if dbl>>63 else 1
+    exp = (dbl>>44)&((1<<43)-1)
+    mnt = dbl&((1<<44)-1)
+    print hex(dbl), sign, exp, mnt
+    #number = sign*((1+mnt)/2**52)*2**(exp-1023)
+    #print number
+
+
+    additional_data = '\xff'
+    pack_test_cases = [
+        #{'value': 0.0001111111,   'schema': '\x30', 'data': '\xf6\x00\x10\xf4\x47'},  # -10 1111111
+        #{'value': -0.0001111111,  'schema': '\x30', 'data': '\xf6\xff\xef\x0b\xb9'},  # -10 -1111111
+        #{'value': 1.00000001,     'schema': '\x30', 'data': '\xf8\x45\xf5\xe1\x01'},  # -8 100000001
+        #{'value': -1.00000001,    'schema': '\x30', 'data': '\xf8\xfa\x0a\x1e\xff'},  # -8 -100000001
+        #{'value': 10000000.0,     'schema': '\x20', 'data': '\x07\x01'            },  # 7 1
+        #{'value': -10000000.0,    'schema': '\x20', 'data': '\x07\xff'            },  # 7 -1
+        #{'value': 1.2323435e-19,  'schema': '\x30', 'data': '\xe6\x00\xbc\x0a\x6b'},  # -26 12323435
+        #{'value': -1.2323435e-19, 'schema': '\x30', 'data': '\xe6\xff\x43\xf5\x95'},  # -26 -12323435
+        #{'value': 1.1111e+19,     'schema': '\x28', 'data': '\x0f\x2b\x67'        },  # 15 11111
+        #{'value': -1.1111e+19,    'schema': '\x28', 'data': '\x0f\xd4\x99'        },  # 15 -11111
+        ## TODO nan inf -inf
+    ]
+    for case in pack_test_cases:
+        schema, data = Float().pack(case['value'])
+        if schema != case['schema']:
+            print 'Error pack schema', \
+                "value:",  case['value'], \
+                "got schema:", schema.encode('hex'), \
+                "expected schema:", case['schema'].encode('hex')
+
+        if data != case['data']:
+            print 'Error pack data', \
+                "value", case['value'], \
+                "got data:", data.encode('hex'), \
+                "expected data", case['data'].encode('hex')
+
+    for case in pack_test_cases:
+        value, schema_tail, data_tail = Float().unpack(
+            schema=case['schema']+additional_data,
+            data=case['data']+additional_data
+        )
+        if value != case['value']:
+            print 'Error unpack value', \
+                "expected value:",  case['value'], \
+                "got value:", value
+        if schema_tail != additional_data:
+            print 'Error unpack wrong schema_tail', \
+                "value", case['value'], \
+                "got schema_tail:", schema_tail.encode('hex'), \
+                "expected schema_tail:", additional_data.encode('hex')
+        if data_tail != additional_data:
+            print 'Error unpack wrong schema_tail', \
+                "value", case['value'], \
+                "got data_tail:", data_tail.encode('hex'), \
+                "expected data_tail:", additional_data.encode('hex')
+
+
 def tests():
     print 'test start'
-    test_string()
-    test_integer()
-    test_boolean()
+    #test_string()
+    #test_integer()
+    #test_boolean()
+    test_float()
 
     additional_data = '\xff'
 
