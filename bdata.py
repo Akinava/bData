@@ -59,8 +59,16 @@ class Byte:
             bits += 1
         return bits
 
+    def or_(self, byte):
+        self.number |= byte
+        return self
+
     def get_number_by_edge(self, low_bit, length):
         return (self.number>>low_bit)&((1<<length)-1)
+
+    def char_and(self, char):
+        self.number & ord(char)
+        return self
 
 
 class SchemaHandler:
@@ -158,11 +166,57 @@ class Float:
     ~1 inf
     '''
 
-    def pack(self, variable):
-        self.schema = Type().pack(self)
-        print self.schema.encode('hex')
+    def __get_mantissa_and_exponent_from_variable(self):
+        self.__check_exponent()
+        self.__check_dot()
+        self.__cut_right_zeros()
+        self.mantissa = int(self.mantissa)
 
-        return '', ''
+    def __check_exponent(self):
+        if 'e' in str(self.variable):
+            self.mantissa, self.exponent = str(self.variable).split('e')
+        else:
+            self.mantissa = str(self.variable)
+            self.exponent = '0'
+
+    def __check_dot(self):
+        if '.' in self.mantissa:
+            self.exponent = int(self.exponent) - len(self.mantissa) + self.mantissa.index('.') + 1
+            self.mantissa = self.mantissa.replace('.', '')
+        else:
+            self.exponent = int(self.exponent)
+
+    def __cut_right_zeros(self):
+        self.exponent += len(self.mantissa) - len(self.mantissa.rstrip('0'))
+        self.mantissa = self.mantissa.rstrip('0')
+        print self.exponent, self.mantissa
+
+    def __put_exponent_to_data(self):
+        _, exponent_in_data_format = Integer().pack(self.exponent)
+        self.data = exponent_in_data_format
+
+    def __put_mantissa_to_data(self):
+        # FIXME
+        mantissa_schima, mantissa_in_data_format = Integer().pack(self.mantissa)
+        self.data += mantissa_in_data_format
+        byte_sign_of_size = Byte(mantissa_schima).or_((1<<Type.type_bit)-1)
+        self.schema = byte_sign_of_size.char_and(self.schema).get()
+
+    def __pack_schima(self):
+        self.schema = Type().pack(self)
+
+    def __pack_data(self):
+        self.__get_mantissa_and_exponent_from_variable()
+        self.__put_exponent_to_data()
+        self.__put_mantissa_to_data()
+
+
+    def pack(self, variable):
+        self.variable = variable
+        self.__pack_schima()
+        self.__pack_data()
+
+        return self.schema, ''
 
     def unpack(self):
         return '', '', ''
@@ -716,20 +770,25 @@ def test_string():
 def test_float():
     print '-' * 10
     print 'Float'
+    '''
+    f=1
+    f_hex = struct.pack('>f', f)
+    f_hex_int = int(f_hex.encode('hex'), 16)
 
-    dbl = struct.unpack('>Q', struct.pack('>d', 1))[0]
-
-    sign = -1 if dbl>>63 else 1
-    exp = (dbl>>44)&((1<<43)-1)
-    mnt = dbl&((1<<44)-1)
-    print hex(dbl), sign, exp, mnt
-    #number = sign*((1+mnt)/2**52)*2**(exp-1023)
-    #print number
-
+    sign = -1 if f_hex_int >> 31 else 1
+    exp = (f_hex_int >> 23) & 0xff
+    mnt = f_hex_int & 0x7fffff | 0x800000 if exp else f_hex_int & 0x7fffff
+    print f
+    print sign, exp, mnt, exp-127-23, 2**(exp-127-23)
+    m1 = mnt*(2**(-23))
+    print sign * m1 * (2**(exp-127))
+    print sign * mnt * (2**(exp-127-23))
+    '''
 
     additional_data = '\xff'
     pack_test_cases = [
-        #{'value': 0.0001111111,   'schema': '\x30', 'data': '\xf6\x00\x10\xf4\x47'},  # -10 1111111
+        {'value': 0.0000000001,   'schema': '\x20', 'data': '\xf6\x00\x10\xf4\x47'}
+        #{'value': 0.0001111111,   'schema': '\x20', 'data': '\xf6\x00\x10\xf4\x47'},  # -10 1111111
         #{'value': -0.0001111111,  'schema': '\x30', 'data': '\xf6\xff\xef\x0b\xb9'},  # -10 -1111111
         #{'value': 1.00000001,     'schema': '\x30', 'data': '\xf8\x45\xf5\xe1\x01'},  # -8 100000001
         #{'value': -1.00000001,    'schema': '\x30', 'data': '\xf8\xfa\x0a\x1e\xff'},  # -8 -100000001
@@ -754,7 +813,7 @@ def test_float():
                 "value", case['value'], \
                 "got data:", data.encode('hex'), \
                 "expected data", case['data'].encode('hex')
-
+    '''
     for case in pack_test_cases:
         value, schema_tail, data_tail = Float().unpack(
             schema=case['schema']+additional_data,
@@ -774,7 +833,7 @@ def test_float():
                 "value", case['value'], \
                 "got data_tail:", data_tail.encode('hex'), \
                 "expected data_tail:", additional_data.encode('hex')
-
+    '''
 
 def tests():
     print 'test start'
