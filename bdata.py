@@ -168,16 +168,23 @@ class Float:
     765 bits
     000~ reserverd for type bits
 
-     43 bits
+     43  bits
     ~00~ length 1 byte
     ~01~ length 2 byte
     ~10~ length 4 byte
     ~11~ length 8 byte
 
-     0 bit
-    ~0 nan
-    ~1 inf
+    #  0x7fffffffffffffff  inf
+    # -0x7fffffffffffffff -inf
+    # -0x8000000000000000  nan
     '''
+
+    denormalized = {
+        #               -128
+        float('nan'):  '\x80\x80\x00\x00\x00\x00\x00\x00\x00',
+        float('inf'):  '\x80\x7f\xff\xff\xff\xff\xff\xff\xff',
+        float('-inf'): '\x80\x80\x00\x00\x00\x00\x00\x00\x01'
+    }
 
     def __get_mantissa_and_exponent_from_variable(self):
         self.__check_exponent()
@@ -232,8 +239,21 @@ class Float:
         self.__put_exponent_to_data()
         self.__put_mantissa_to_data()
 
+    def __check_denormalized(self):
+        if self.variable in Float.denormalized.keys():
+            return True
+        return False
+
+    def __pack_denormalized(self):
+        self.sign_of_mantissa_size = 3
+        self.__pack_schema()
+        self.data = Float.denormalized[self.variable]
+
     def pack(self, variable):
         self.variable = variable
+        if self.__check_denormalized() is True:
+            self.__pack_denormalized()
+            return self.schema, self.data
         self.__pack_data()
         self.__pack_schema()
         return self.schema, self.data
@@ -260,7 +280,14 @@ class Float:
     def __unpack_data(self):
         self.__unpack_exponent()
         self.__unpack_mantissa()
-        self.variable = float(self.mantissa * 10 ** self.exponent)
+        self.variable = float(self.mantissa * Decimal(10) ** self.exponent)
+
+    def __unpack_denormalized(self):
+        pass
+        # TODO
+        #  0x7fffffffffffffff  inf
+        # -0x7fffffffffffffff -inf
+        # -0x8000000000000000  nan
 
     def unpack(self, schema, data):
         self.schema = schema
@@ -834,22 +861,26 @@ def test_float():
 
     additional_data = '\xff'
     pack_test_cases = [
-        {'value': 0.0000000001,   'schema': '\x20', 'data': '\xf6\x01'},
-        {'value': 1e-10,          'schema': '\x20', 'data': '\xf6\x01'},
-        {'value': 1e+127,          'schema': '\x20', 'data': '\x7f\x01'},
-        {'value': 1e-128,          'schema': '\x20', 'data': '\x80\x01'},
-        {'value': 0.1,             'schema': '\x20', 'data': '\xff\x01'},
-        {'value': 0.0001111111,   'schema': '\x20', 'data': '\xf6\x00\x10\xf4\x47'},  # -10 1111111
+        {'value': -0.0000000001,  'schema': '\x20', 'data': '\xf6\xff'            },  # -10  1
+        {'value': 1e-10,          'schema': '\x20', 'data': '\xf6\x01'            },  # -10  1
+        {'value': 1e+127,         'schema': '\x20', 'data': '\x7f\x01'            },  #  127 1
+        {'value': 1e-128,         'schema': '\x20', 'data': '\x80\x01'            },  # -128 1
+        {'value': 0.1,            'schema': '\x20', 'data': '\xff\x01'            },  # -1   1
+        {'value': 0.222,          'schema': '\x28', 'data': '\xfd\x00\xde'        },  # -1   222
+        {'value': -0.222,         'schema': '\x28', 'data': '\xfd\xff\x22'        },  # -1  -222
+        {'value': 0.0001111111,   'schema': '\x30', 'data': '\xf6\x00\x10\xf4\x47'},  # -10  1111111
         {'value': -0.0001111111,  'schema': '\x30', 'data': '\xf6\xff\xef\x0b\xb9'},  # -10 -1111111
-        {'value': 1.00000001,     'schema': '\x30', 'data': '\xf8\x45\xf5\xe1\x01'},  # -8 100000001
-        {'value': -1.00000001,    'schema': '\x30', 'data': '\xf8\xfa\x0a\x1e\xff'},  # -8 -100000001
-        {'value': 10000000.0,     'schema': '\x20', 'data': '\x07\x01'            },  # 7 1
-        {'value': -10000000.0,    'schema': '\x20', 'data': '\x07\xff'            },  # 7 -1
-        {'value': 1.2323435e-19,  'schema': '\x30', 'data': '\xe6\x00\xbc\x0a\x6b'},  # -26 12323435
+        {'value': 1.00000001,     'schema': '\x30', 'data': '\xf8\x05\xf5\xe1\x01'},  # -8   100000001
+        {'value': -1.00000001,    'schema': '\x30', 'data': '\xf8\xfa\x0a\x1e\xff'},  # -8  -100000001
+        {'value': 10000000.0,     'schema': '\x20', 'data': '\x07\x01'            },  #  7   1
+        {'value': -10000000.0,    'schema': '\x20', 'data': '\x07\xff'            },  #  7  -1
+        {'value': 1.2323435e-19,  'schema': '\x30', 'data': '\xe6\x00\xbc\x0a\x6b'},  # -26  12323435
         {'value': -1.2323435e-19, 'schema': '\x30', 'data': '\xe6\xff\x43\xf5\x95'},  # -26 -12323435
-        {'value': 1.1111e+19,     'schema': '\x28', 'data': '\x0f\x2b\x67'        },  # 15 11111
-        {'value': -1.1111e+19,    'schema': '\x28', 'data': '\x0f\xd4\x99'        },  # 15 -11111
-        ## TODO nan inf -inf
+        {'value': 1.1111e+19,     'schema': '\x28', 'data': '\x0f\x2b\x67'        },  #  15  11111
+        {'value': -1.1111e+19,    'schema': '\x28', 'data': '\x0f\xd4\x99'        },  #  15 -11111
+        #{'value': float('nan'),   'schema': '\x30', 'data': '\x80\x80\x00\x00\x00\x00\x00\x00\x00'}, #
+        #{'value': float('inf'),   'schema': '\x30', 'data': '\x80\x7f\xff\xff\xff\xff\xff\xff\xff'}, #
+        #{'value': float('-inf'),  'schema': '\x30', 'data': '\x80\x80\x00\x00\x00\x00\x00\x00\x01'}, #
     ]
     for case in pack_test_cases:
         schema, data = Float().pack(case['value'])
@@ -872,8 +903,8 @@ def test_float():
         )
         if value != case['value']:
             print 'Error unpack value', \
-                'expected value:',  case['value'], \
-                'got value:', value
+                'expected value:',  [case['value']], type(case['value']), \
+                'got value:', [value], type(value)
         if schema_tail != additional_data:
             print 'Error unpack wrong schema_tail', \
                 'value', case['value'], \
@@ -896,64 +927,6 @@ def tests():
     additional_data = '\xff'
 
     '''
-    print '-' * 10
-    print 'Float'
-
-    pack_test = [
-        {'value': 0.0001111111,   'schema': '0x00', 'data': '\x8a\x40\x10\xf4\x47'},  # -10 1111111
-        {'value': -0.0001111111,  'schema': '0x00', 'data': '\x8a\xc0\x10\xf4\x47'},  # -10 -1111111
-        {'value': 1.00000001,     'schema': '0x00', 'data': '\x88\x45\xf5\xe1\x01'},  # -8 100000001
-        {'value': -1.00000001,    'schema': '0x00', 'data': '\x88\xc5\xf5\xe1\x01'},  # -8 -100000001
-        {'value': 10000000.0,     'schema': '0x00', 'data': '\x07\x01'            },  # 7 1
-        {'value': -10000000.0,    'schema': '0x00', 'data': '\x07\x81'            },  # 7 -1
-        {'value': 1.2323435e-19,  'schema': '0x00', 'data': '\x9a\x40\xbc\x0a\x6b'},  # -26 12323435
-        {'value': -1.2323435e-19, 'schema': '0x00', 'data': '\x9a\xc0\xbc\x0a\x6b'},  # -26 -12323435
-        {'value': 1.1111e+19,     'schema': '0x00', 'data': '\x0f\x40\x00\x2b\x67'},  # 15 11111
-        {'value': -1.1111e+19,    'schema': '0x00', 'data': '\x0f\xc0\x00\x2b\x67'},  # 15 -11111
-    ]
-
-    for case in pack_test:
-        schema, data = Float(number).pack
-        if data != data:
-            print 'False pack', number, Float(number).pack
-        float_number, rest_part_of_data = Float(data+additional_data).unpack
-        if str(float_number) != str(number):
-            print 'False unpack', number
-        if rest_part_of_data != additional_data:
-            print 'False rest data'
-
-    print '-' * 10
-    print 'Bool None'
-
-    for variable, data in Boolean.variables.items():
-        _, pack_bool = Boolean(variable).pack
-        if pack_bool != data:
-            print 'False pack', variable
-
-        unpack_variable, rest_part_of_data = Boolean(data+additional_data).unpack
-        if unpack_variable != variable:
-            print 'False unpack', number
-        if rest_part_of_data != additional_data:
-            print 'False rest data'
-
-    print '-' * 10
-    print 'String'
-
-    variables = [
-        ['123qweQWE', '\x09123qweQWE'],
-    ]
-
-    for variable, data in variables:
-        _, pack_str = String(variable).pack
-        if pack_str != data:
-            print 'False pack', [variable, String(variable).pack]
-
-        unpack_variable, rest_part_of_data = String(data=data+additional_data).unpack
-        if unpack_variable != variable:
-            print 'False unpack', number
-        if rest_part_of_data != additional_data:
-            print 'False rest data'
-
 
     print '-' * 10
     print 'List'
