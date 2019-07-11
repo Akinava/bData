@@ -3,7 +3,9 @@
 
 import struct
 import json
+import math
 from decimal import Decimal
+
 
 __author__ = 'Akinava'
 __author_email__ = 'akinava@gmail.com'
@@ -174,16 +176,14 @@ class Float:
     ~10~ length 4 byte
     ~11~ length 8 byte
 
-    #  0x7fffffffffffffff  inf
-    # -0x7fffffffffffffff -inf
-    # -0x8000000000000000  nan
     '''
 
     denormalized = {
         #               -128
-        float('nan'):  '\x80\x80\x00\x00\x00\x00\x00\x00\x00',
-        float('inf'):  '\x80\x7f\xff\xff\xff\xff\xff\xff\xff',
-        float('-inf'): '\x80\x80\x00\x00\x00\x00\x00\x00\x01'
+        #float('-nan'): '\x80\x7f\xff\xff\xff\xff\xff\xff\xfe',
+        'nan':  '\x80\x7f\xff\xff\xff\xff\xff\xff\xff',
+        '-inf': '\x80\x80\x00\x00\x00\x00\x00\x00\x00',
+        'inf':  '\x80\x80\x00\x00\x00\x00\x00\x00\x01'
     }
 
     def __get_mantissa_and_exponent_from_variable(self):
@@ -239,19 +239,19 @@ class Float:
         self.__put_exponent_to_data()
         self.__put_mantissa_to_data()
 
-    def __check_denormalized(self):
-        if self.variable in Float.denormalized.keys():
+    def __check_denormalized_variable(self):
+        if str(self.variable) in Float.denormalized.keys():
             return True
         return False
 
     def __pack_denormalized(self):
         self.sign_of_mantissa_size = 3
         self.__pack_schema()
-        self.data = Float.denormalized[self.variable]
+        self.data = Float.denormalized[str(self.variable)]
 
     def pack(self, variable):
         self.variable = variable
-        if self.__check_denormalized() is True:
+        if self.__check_denormalized_variable() is True:
             self.__pack_denormalized()
             return self.schema, self.data
         self.__pack_data()
@@ -282,17 +282,31 @@ class Float:
         self.__unpack_mantissa()
         self.variable = float(self.mantissa * Decimal(10) ** self.exponent)
 
+    def __check_denormalized_data(self):
+        if self.sign_of_mantissa_size != 3:
+            return False
+
+        data_lengh = 2 ** self.sign_of_mantissa_size
+        exponent_and_mantissa_data = self.data[: 1 + data_lengh]
+
+        if not exponent_and_mantissa_data in Float.denormalized.values():
+            return False
+
+        denormalized_revers = {v: k for k, v in Float.denormalized.items()}
+        self.variable = float(denormalized_revers[exponent_and_mantissa_data])
+        self.data_tail = self.data[1 + data_lengh: ]
+        return True
+
     def __unpack_denormalized(self):
         pass
-        # TODO
-        #  0x7fffffffffffffff  inf
-        # -0x7fffffffffffffff -inf
-        # -0x8000000000000000  nan
 
     def unpack(self, schema, data):
         self.schema = schema
         self.data = data
         self.__unpack_schema()
+        if self.__check_denormalized_data():
+            self.__unpack_denormalized()
+            return self.variable, self.schema_tail, self.data_tail
         self.__unpack_data()
         return self.variable, self.schema_tail, self.data_tail
 
@@ -796,14 +810,14 @@ def test_string():
     print 'String'
     additional_data = '\xff'
     pack_test_cases = [
-        {'value': 'abc', 'schema': '\x40\x03', 'data': 'abc'},
-        {'value': '123', 'schema': '\x40\x03', 'data': '123'},
-        {'value': 'Лис', 'schema': '\x40\x06', 'data': 'Лис'},
-        {'value': '123qweйцу', 'schema': '\x40\x0c', 'data': '123qweйцу'},
-        {'value': '0'*((1<<8)-1), 'schema': '\x40'+'\xff'*1, 'data': '0'*((1<<8)-1)},
-        {'value': '0'*((1<<16)-1), 'schema': '\x48'+'\xff'*2, 'data': '0'*((1<<16)-1)},
-        #{'value': '0'*((1<<32)-1), 'schema': '\x50'+'\xff'*4, 'data': '0'*((1<<32)-1)},
-        #{'value': '0'*((1<<33)-1), 'schema': '\x70'+('\x00'*3)+'\x01'+('\xff'*4), 'data': '0'*((1<<33)-1)},
+        {'value': 'abc', 'schema': '\x40', 'data': '\x03' + 'abc'},
+        {'value': '123', 'schema': '\x40', 'data': '\x03' + '123'},
+        {'value': 'Лис', 'schema': '\x40', 'data': '\x06' + 'Лис'},
+        {'value': '123qweйцу', 'schema': '\x40', 'data': '\x0c' + '123qweйцу'},
+        {'value': '0'*((1<<8)-1), 'schema': '\x40', 'data': '\xff'*1 + '0'*((1<<8)-1)},
+        {'value': '0'*((1<<16)-1), 'schema': '\x48', 'data': '\xff'*2' + '0'*((1<<16)-1)},
+        #{'value': '0'*((1<<32)-1), 'schema': '\x50', 'data': '\xff'*4 + '0'*((1<<32)-1)},
+        #{'value': '0'*((1<<33)-1), 'schema': '\x70', 'data': ('\x00'*3)+'\x01'+('\xff'*4) + '0'*((1<<33)-1)},
      ]
 
     for case in pack_test_cases:
@@ -844,20 +858,6 @@ def test_string():
 def test_float():
     print '-' * 10
     print 'Float'
-    '''
-    f=1
-    f_hex = struct.pack('>f', f)
-    f_hex_int = int(f_hex.encode('hex'), 16)
-
-    sign = -1 if f_hex_int >> 31 else 1
-    exp = (f_hex_int >> 23) & 0xff
-    mnt = f_hex_int & 0x7fffff | 0x800000 if exp else f_hex_int & 0x7fffff
-    print f
-    print sign, exp, mnt, exp-127-23, 2**(exp-127-23)
-    m1 = mnt*(2**(-23))
-    print sign * m1 * (2**(exp-127))
-    print sign * mnt * (2**(exp-127-23))
-    '''
 
     additional_data = '\xff'
     pack_test_cases = [
@@ -878,9 +878,9 @@ def test_float():
         {'value': -1.2323435e-19, 'schema': '\x30', 'data': '\xe6\xff\x43\xf5\x95'},  # -26 -12323435
         {'value': 1.1111e+19,     'schema': '\x28', 'data': '\x0f\x2b\x67'        },  #  15  11111
         {'value': -1.1111e+19,    'schema': '\x28', 'data': '\x0f\xd4\x99'        },  #  15 -11111
-        #{'value': float('nan'),   'schema': '\x30', 'data': '\x80\x80\x00\x00\x00\x00\x00\x00\x00'}, #
-        #{'value': float('inf'),   'schema': '\x30', 'data': '\x80\x7f\xff\xff\xff\xff\xff\xff\xff'}, #
-        #{'value': float('-inf'),  'schema': '\x30', 'data': '\x80\x80\x00\x00\x00\x00\x00\x00\x01'}, #
+        {'value': float('nan'),   'schema': '\x38', 'data': '\x80\x7f\xff\xff\xff\xff\xff\xff\xff'}, #
+        {'value': float('-inf'),  'schema': '\x38', 'data': '\x80\x80\x00\x00\x00\x00\x00\x00\x00'}, #
+        {'value': float('inf'),   'schema': '\x38', 'data': '\x80\x80\x00\x00\x00\x00\x00\x00\x01'}, #
     ]
     for case in pack_test_cases:
         schema, data = Float().pack(case['value'])
@@ -901,7 +901,7 @@ def test_float():
             schema=case['schema']+additional_data,
             data=case['data']+additional_data
         )
-        if value != case['value']:
+        if value != case['value'] and str(value) != str(case['value']):
             print 'Error unpack value', \
                 'expected value:',  [case['value']], type(case['value']), \
                 'got value:', [value], type(value)
@@ -919,35 +919,10 @@ def test_float():
 
 def tests():
     print 'test start'
-    #test_string()
-    #test_integer()
-    #test_boolean()
+    test_string()
+    test_integer()
+    test_boolean()
     test_float()
-
-    additional_data = '\xff'
-
-    '''
-
-    print '-' * 10
-    print 'List'
-
-    variables = [
-        #              map                 data
-        [[1, 2, '3'], '\x05\x03\x00\x00\x03\x01\x02\x01\x33'],
-    ]
-
-    for variable, data in variables:
-        print variable
-        data_map, data = List(variable).pack
-        if data_map + data != data:
-            print 'False pack', variable, (data_map + data).encode('hex')
-
-        unpack_variable, rest_part_of_data = List(data+additional_data).unpack
-        if unpack_variable != variable:
-            print 'False unpack', variable, unpack_variable
-        if rest_part_of_data != additional_data:
-            print 'False rest data'
-    '''
 
     print '-' * 10
     print 'test end'
