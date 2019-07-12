@@ -810,14 +810,14 @@ def test_string():
     print 'String'
     additional_data = '\xff'
     pack_test_cases = [
-        {'value': 'abc', 'schema': '\x40', 'data': '\x03' + 'abc'},
-        {'value': '123', 'schema': '\x40', 'data': '\x03' + '123'},
-        {'value': 'Лис', 'schema': '\x40', 'data': '\x06' + 'Лис'},
-        {'value': '123qweйцу', 'schema': '\x40', 'data': '\x0c' + '123qweйцу'},
-        {'value': '0'*((1<<8)-1), 'schema': '\x40', 'data': '\xff'*1 + '0'*((1<<8)-1)},
-        {'value': '0'*((1<<16)-1), 'schema': '\x48', 'data': '\xff'*2' + '0'*((1<<16)-1)},
-        #{'value': '0'*((1<<32)-1), 'schema': '\x50', 'data': '\xff'*4 + '0'*((1<<32)-1)},
-        #{'value': '0'*((1<<33)-1), 'schema': '\x70', 'data': ('\x00'*3)+'\x01'+('\xff'*4) + '0'*((1<<33)-1)},
+        {'value': 'abc', 'schema': '\x40\x03', 'data': 'abc'},
+        {'value': '123', 'schema': '\x40\x03', 'data': '123'},
+        {'value': 'Лис', 'schema': '\x40\x06', 'data': 'Лис'},
+        {'value': '123qweйцу', 'schema': '\x40\x0c', 'data': '123qweйцу'},
+        {'value': '0'*((1<<8)-1), 'schema': '\x40'+'\xff'*1, 'data': '0'*((1<<8)-1)},
+        {'value': '0'*((1<<16)-1), 'schema': '\x48'+'\xff'*2, 'data': '0'*((1<<16)-1)},
+        #{'value': '0'*((1<<32)-1), 'schema': '\x50'+'\xff'*4, 'data': '0'*((1<<32)-1)},
+        #{'value': '0'*((1<<33)-1), 'schema': '\x70'+('\x00'*3)+'\x01'+('\xff'*4), 'data': '0'*((1<<33)-1)},
      ]
 
     for case in pack_test_cases:
