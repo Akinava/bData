@@ -34,31 +34,6 @@ def define_hex_size_of_unsign_number(number):
     raise Exception('int out of size {}'.format(number))
 
 
-class NotFound:
-    def __str__(self):
-        return 'NOT_FIND'
-
-    def __unicode__(self):
-        return 'NOT_FIND'
-
-    def __repr__(self):
-        return 'NOT_FIND'
-
-    def __getattr__(self, attr):
-        return self
-
-    def __getitem__(self, item):
-        return self
-
-    def __call__(self):
-        return self
-
-    def __eq__(self, inst):
-        return self is inst
-
-
-not_find = NotFound()
-
 
 class Byte:
     def __init__(self, variable=0):
@@ -100,7 +75,7 @@ class Byte:
 
 
 class SchemaHandler:
-    def pack_schema(self, schema, sign_of_size):
+    def pack_sign_of_size(self, schema, sign_of_size):
         return Byte(schema).put_number_on_place(
             number=sign_of_size,
             place=Type.schema_bit_length_bit).get()
@@ -129,7 +104,7 @@ class Integer:
         self.schema = Type().pack(self)
 
     def __pack_sign_of_size(self):
-        self.schema = SchemaHandler().pack_schema(self.schema, self.sign_of_size)
+        self.schema = SchemaHandler().pack_sign_of_size(self.schema, self.sign_of_size)
 
     def __pack_schema(self):
         self.__pack_type()
@@ -233,7 +208,7 @@ class Float:
         self.sign_of_mantissa_size = define_hex_size_of_sign_number(self.mantissa)
 
     def __pack_sign_of_size(self):
-        self.schema = SchemaHandler().pack_schema(self.schema, self.sign_of_mantissa_size)
+        self.schema = SchemaHandler().pack_sign_of_size(self.schema, self.sign_of_mantissa_size)
 
     def __pack_schema(self):
         self.schema = Type().pack(self)
@@ -332,7 +307,7 @@ class String:
         self.schema = Type().pack(self)
 
     def __pack_sign_of_size(self):
-        self.schema = SchemaHandler().pack_schema(self.schema, self.sign_of_size)
+        self.schema = SchemaHandler().pack_sign_of_size(self.schema, self.sign_of_size)
 
     def __pack_length(self):
         fmt = byte_order+struct_format_unsign[self.sign_of_size]
@@ -430,7 +405,7 @@ class List:
     def __pack_list(self):
         self.schema_list, self.data_list = [], []
         for item in self.variable:
-            tp = Type().define_variable_type(item)
+            tp = Type().define_by_variable(item)
             schema, data = tp().pack(item)
             self.schema_list.append(schema)
             self.data_list.append(data)
@@ -447,7 +422,7 @@ class List:
         self.__pack_type_items()
 
     def __pack_sign_of_size(self):
-        self.schema = SchemaHandler().pack_schema(self.schema, self.sign_of_size)
+        self.schema = SchemaHandler().pack_sign_of_size(self.schema, self.sign_of_size)
 
     def __pack_length(self):
         fmt = byte_order+struct_format_unsign[self.sign_of_size]
@@ -506,9 +481,11 @@ class List:
         pass
 
     def __unpack_data(self):
+        self.variable = []
         schema_of_first_item = ''
         for item_data in xrange(self.length):
-            print item_data
+            cls = Type().define_by_schema(self.schema_tail)
+            print cls
 
     def unpack(self, schema, data):
         self.schema = schema
@@ -555,7 +532,7 @@ class Type:
     ~11~ length 8 byte
 
     '''
-    type_bit = 5
+    schema_type_bit = 5
     schema_bit_length_bit = 3
     schema_max_sign_of_size = 3
 
@@ -583,25 +560,56 @@ class Type:
         Contraction,
     )
 
-    def define_variable_type(self, variable):
+    def define_by_variable(self, variable):
         for tp_real, tp_bdata in self.types_mapping:
             if isinstance(variable, tp_real):
                 return tp_bdata
         raise Exception("Error: can't define type of data {}".format(type(variable)))
 
+    def define_by_schema(self, schema):
+        self.unpack(schema)
+
     def pack(self, obj):
         for class_type in self.types_index:
             if isinstance(obj, class_type):
                 obj_index = self.types_index.index(class_type)
-                return Byte(obj_index).shift_bits(self.type_bit).get()
+                return Byte(obj_index).shift_bits(Type.schema_type_bit).get()
         raise Exception('wrong type data {}'.format(obj))
 
     def unpack(self, schema):
-        pass
+        length_of_bits = Byte().define_bits_by_number(len(Type.types_index))
+        type_index = Byte(schema[0]).get_number_by_edge(Type.schema_type_bit, length_of_bits)
+        print 'type_index', type_index
+        cls = Type.types_index[type_index]
 
 
 #=============================================================================#
 
+
+class NotFound:
+    def __str__(self):
+        return 'NOT_FIND'
+
+    def __unicode__(self):
+        return 'NOT_FIND'
+
+    def __repr__(self):
+        return 'NOT_FIND'
+
+    def __getattr__(self, attr):
+        return self
+
+    def __getitem__(self, item):
+        return self
+
+    def __call__(self):
+        return self
+
+    def __eq__(self, inst):
+        return self is inst
+
+
+not_find = NotFound()
 
 
 class BTYPE:
@@ -665,31 +673,6 @@ class BTYPE:
 
     def validator(self, value, t=None):
         pass
-
-
-class BNONE:
-    @classmethod
-    def pack(self):
-        return {v: k for k, v in BTYPE.b_type.items()}[type(None)]
-
-    @classmethod
-    def unpack(self):
-        return None
-
-
-class BBOOL:
-    TYPES = {
-        '\x00': False,
-        '\x01': True,
-    }
-
-    @classmethod
-    def pack(self, x):
-        return {v: k for k, v in BBOOL.TYPES.items()}[x]
-
-    @classmethod
-    def unpack(self, x):
-        return BBOOL.TYPES[x]
 
 
 class BDATA:
