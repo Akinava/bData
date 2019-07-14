@@ -436,17 +436,16 @@ class List:
 
     def __set_type_of_variables_is_equal(self):
         self.schema = Byte(self.schema).put_number_on_place(
-            number = Type.types_is_equal,
-            place = Type.types_equal_bit
+            number = Type.list_items_is_equal,
+            place = Type.schema_equal_bit
             ).get()
 
     def __compress_items_schema(self):
         if len(self.schema_list) < 2:
             return
-        self.schema_list = list(set(self.schema_list))
-        if len(list(set(self.schema_list))) != 1:
-            return
-        self.__set_type_of_variables_is_equal()
+        if len(list(set(self.schema_list))) == 1:
+            self.schema_list = [self.schema_list[0]]
+            self.__set_type_of_variables_is_equal()
 
     def pack(self, variable):
         self.variable = variable
@@ -460,9 +459,9 @@ class List:
         self.__unpack_length()
 
     def __check_schema_compressed(self):
-        self.types_is_equal = False
-        if Byte(self.schema[0]).check_bit(Type.types_equal_bit) == Type.types_is_equal:
-            self.types_is_equal = True
+        self.list_items_is_equal = False
+        if Byte(self.schema[0]).check_bit(Type.schema_equal_bit) == Type.list_items_is_equal:
+            self.list_items_is_equal = True
 
     def __unpack_length(self):
         fmt = byte_order + struct_format_unsign[self.sign_of_size]
@@ -481,18 +480,25 @@ class List:
         pass
 
     def __unpack_data(self):
+        self.data_tail = self.data
         self.variable = []
-        schema_of_first_item = ''
-        for item_data in xrange(self.length):
-            cls = Type().define_by_schema(self.schema_tail)
-            print cls
+        last_index = self.length - 1
+        for item_index in xrange(self.length):
+            cls = Type().unpack(self.schema_tail)
+            obj = cls()
+            value, self.schema_tail, self.data_tail = obj.unpack(self.schema_tail, self.data_tail)
+            self.variable.append(value)
+
+            # add head of cshema
+            if self.list_items_is_equal and item_index != last_index:
+                self.schema_tail = obj.get_schema() + self.schema_tail
 
     def unpack(self, schema, data):
         self.schema = schema
         self.data = data
         self.__unpack_schema()
         self.__unpack_data()
-        self.variable, self.schema_tail, self.data_tail
+        return self.variable, self.schema_tail, self.data_tail
 
     def get_schema(self):
         return self.schema
@@ -500,16 +506,27 @@ class List:
 
 class Dictionary:
     '''
-    keys and/or values type is unequal                    = 0
-    all keys type are equal and all value types are equal = 1
-    all keys and value are equal                          = 2
+    keys type and values type are unequal        = 0
+    keys type are equal                          = 1
+    value type are equal                         = 2
+    keys type are equal and value type are equal = 3
     '''
+    def __pack_data(self):
+        self.__define_sign_of_size()
+        self.__pack_dict()
+        self.__join_data()
 
-    def pack(self, number):
-        pass
+    def pack(self, variable):
+        self.variable = variable
+        self.__pack_data()
+        self.__pack_schema()
+        return self.schema, self.data
 
-    def unpack(self, data):
-        pass
+    def unpack(self, schema, data):
+        return self.variable, self.schema_tail, self.data_tail
+
+    def get_schema(self):
+        self.schema
 
 
 class Contraction:
@@ -536,8 +553,10 @@ class Type:
     schema_bit_length_bit = 3
     schema_max_sign_of_size = 3
 
-    types_is_equal = 1
-    types_equal_bit = 0
+    list_items_is_equal = 1
+    keys_are_equal = 1
+    values_are_equal = 2
+    schema_equal_bit = 0
 
     types_mapping = (
         (int,        Integer),
@@ -566,9 +585,6 @@ class Type:
                 return tp_bdata
         raise Exception("Error: can't define type of data {}".format(type(variable)))
 
-    def define_by_schema(self, schema):
-        self.unpack(schema)
-
     def pack(self, obj):
         for class_type in self.types_index:
             if isinstance(obj, class_type):
@@ -579,8 +595,7 @@ class Type:
     def unpack(self, schema):
         length_of_bits = Byte().define_bits_by_number(len(Type.types_index))
         type_index = Byte(schema[0]).get_number_by_edge(Type.schema_type_bit, length_of_bits)
-        print 'type_index', type_index
-        cls = Type.types_index[type_index]
+        return Type.types_index[type_index]
 
 
 #=============================================================================#
@@ -807,7 +822,7 @@ def test_integer():
         {'value': 0x7fffffffffffffff, 'schema': '\x18', 'data': '\x7f\xff\xff\xff\xff\xff\xff\xff'},
         {'value': -(0x8000000000000000), 'schema': '\x18', 'data': '\x80\x00\x00\x00\x00\x00\x00\x00'},
     ]
-    test_pack_test_cases(Integer, pack_test_cases)
+    test_pack_cases(Integer, pack_test_cases)
 
 
 def test_boolean():
@@ -818,7 +833,7 @@ def test_boolean():
         {'value': False, 'schema': '\x60', 'data': '\x00'},
         {'value': None, 'schema': '\x60', 'data': '\xff'},
     ]
-    test_pack_test_cases(Boolean, pack_test_cases)
+    test_pack_cases(Boolean, pack_test_cases)
 
 
 def test_string():
@@ -938,16 +953,27 @@ def test_list():
     print '-' * 10
     print 'List'
     pack_test_cases = [
-        #{'value': [], 'schema': '\x80\x00', 'data': ''},
+        {'value': [], 'schema': '\x80\x00', 'data': ''},
         {'value': [1, 1], 'schema': '\x81\x02\x00', 'data': '\x01\x01'},
-        #{'value': [1, None], 'schema': '\x80\x02\x00\x60', 'data': '\x01\xff'},
-        #{'value': ["Л", "и", "с"], 'schema': '\x81\x03\x40\x02', 'data': '\xd0\x9b\xd0\xb8\xd1\x81'},
-        #{'value': ["Лис", 0xffff, None], 'schema': '\x80\x03\x10\x40\x06\x60', 'data': '\xd0\x9b\xd0\xb8\xd1\x81\x00\x00\xff\xff\xff'},
+        {'value': [1, None], 'schema': '\x80\x02\x00\x60', 'data': '\x01\xff'},
+        {'value': ["Л", "и", "с"], 'schema': '\x81\x03\x40\x02', 'data': 'Лис'},
+        {'value': ["Лис", 0xffff, None], 'schema': '\x80\x03\x40\x06\x10\x60', 'data': 'Лис\x00\x00\xff\xff\xff'},
+        {'value': [], 'schema': '\x80\x00', 'data': ''},
+        {'value': [1, [1]], 'schema': '\x80\x02\x00\x80\x01\x00', 'data': '\x01\x01'},
     ]
-    test_pack_test_cases(List, pack_test_cases)
+    test_pack_cases(List, pack_test_cases)
 
 
-def test_pack_test_cases(cls, pack_test_cases):
+def test_dict():
+    print '-' * 10
+    print 'Dict'
+    pack_test_cases = [
+        {'value': {}, 'schema': '\xa0\x00', 'data': ''},
+    ]
+    test_pack_cases(Dictionary, pack_test_cases)
+
+
+def test_pack_cases(cls, pack_test_cases):
     additional_data = '\xff'
     for case in pack_test_cases:
         schema, data = cls().pack(case['value'])
@@ -990,8 +1016,8 @@ def tests():
     #test_integer()
     #test_boolean()
     #test_float()
-
-    test_list()
+    #test_list()
+    test_dict()
 
     print '-' * 10
     print 'test end'
