@@ -608,6 +608,10 @@ class Dictionary:
         return self.schema, self.data
 
     def unpack(self, schema, data):
+        self.schema = schema
+        self.data = data
+        self.__unpack_schema()
+        self.__unpack_data()
         return self.variable, self.schema_tail, self.data_tail
 
     def get_schema(self):
@@ -1054,14 +1058,15 @@ def test_dict():
     print '-' * 10
     print 'Dict'
     cases = [
-        #{'value': {}, 'schema': '\xa0\x00', 'data': ''},
+        {'value': {}, 'schema': '\xa0\x00', 'data': ''},
         #{'value': {0: 0}, 'schema': '\xa0\x01\x00\x00', 'data': '\x00\x00'},
         #{'value': {0: 0, 1: 0, 2: 0}, 'schema': '\xa3\x03\x00\x00', 'data': '\x00\x00\x01\x00\x02\x00'},
         #{'value': {0: 0, 1: None}, 'schema': '\xa1\x02\x00\x00\x60', 'data': '\x00\x00\x01\xff'},
         #{'value': {0: 0, 1: "a"}, 'schema': '\xa1\x02\x00\x00\x40\x01', 'data': '\x00\x00\x01\x61'},
-        {'value': {0: 0, "a": 0}, 'schema': '\xa2\x02\x00\x00\x40\x01', 'data': '\x00\x00\x61\x00'},
-        {'value': {0: 0, "a": []}, 'schema': '\xa2\x02\x00\x00\x40\x01', 'data': '\x00\x00\x61\x00'},
-
+        #{'value': {0: 0, "a": 0}, 'schema': '\xa2\x02\x00\x00\x40\x01', 'data': '\x00\x00\x61\x00'},
+        #{'value': {0: 0, "a": []}, 'schema': '\xa0\x02\x00\x40\x01\x00\x80\x00', 'data': '\x00\x00\x61'},
+        #{'value': {0: 0, "a": [1, 1]}, 'schema': '\xa0\x02\x00\x40\x01\x00\x81\x02\x00', 'data': '\x00\x00\x61\x01\x01'},
+        #{'value': {1: [0, 1], 2: {1: 1}}, 'schema': '\xa1\x02\x00\x81\x02\x00\xa0\x01\x00\x00', 'data': '\x01\x00\x01\x02\x01\x01'},
     ]
     test_cases(Dictionary, cases)
 
@@ -1105,8 +1110,8 @@ def test_unpack(cls, case):
 
 def test_cases(cls, cases):
     for case in cases:
-        test_pack(cls, case)
-        #test_unpack(cls, case)
+        #test_pack(cls, case)
+        test_unpack(cls, case)
 
 
 def tests():
