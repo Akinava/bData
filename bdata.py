@@ -607,6 +607,15 @@ class Dictionary:
         self.__pack_schema()
         return self.schema, self.data
 
+    def __unpack_schema(self):
+        # TODO
+        self.__check_schema_compressed()
+        self.__unpack_sign_of_size()
+        self.__unpack_length()
+
+    def __unpack_data(self):
+        pass
+
     def unpack(self, schema, data):
         self.schema = schema
         self.data = data
