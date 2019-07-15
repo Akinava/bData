@@ -405,10 +405,13 @@ class List:
     def __pack_list(self):
         self.schema_list, self.data_list = [], []
         for item in self.variable:
-            tp = Type().define_by_variable(item)
-            schema, data = tp().pack(item)
-            self.schema_list.append(schema)
-            self.data_list.append(data)
+            self.__pack_obj(item)
+
+    def __pack_obj(self, item):
+        tp = Type().define_by_variable(item)
+        schema, data = tp().pack(item)
+        self.schema_list.append(schema)
+        self.data_list.append(data)
 
     def __define_sign_of_size(self):
         self.length = len(self.variable)
@@ -436,7 +439,7 @@ class List:
 
     def __set_type_of_variables_is_equal(self):
         self.schema = Byte(self.schema).put_number_on_place(
-            number = Type.list_items_is_equal,
+            number = Type.items_are_equal,
             place = Type.schema_equal_bit
             ).get()
 
@@ -459,9 +462,9 @@ class List:
         self.__unpack_length()
 
     def __check_schema_compressed(self):
-        self.list_items_is_equal = False
-        if Byte(self.schema[0]).check_bit(Type.schema_equal_bit) == Type.list_items_is_equal:
-            self.list_items_is_equal = True
+        self.items_are_equal = False
+        if Byte(self.schema[0]).check_bit(Type.schema_equal_bit) == Type.items_are_equal:
+            self.items_are_equal = True
 
     def __unpack_length(self):
         fmt = byte_order + struct_format_unsign[self.sign_of_size]
@@ -490,7 +493,7 @@ class List:
             self.variable.append(value)
 
             # add head of cshema
-            if self.list_items_is_equal and item_index != last_index:
+            if self.items_are_equal and item_index != last_index:
                 self.schema_tail = obj.get_schema() + self.schema_tail
 
     def unpack(self, schema, data):
@@ -515,6 +518,89 @@ class Dictionary:
         self.__define_sign_of_size()
         self.__pack_dict()
         self.__join_data()
+
+    def __join_data(self):
+        self.data = "".join(self.data_list)
+
+    def __define_sign_of_size(self):
+        self.length = len(self.variable)
+        self.sign_of_size = define_hex_size_of_unsign_number(self.length)
+
+    def __pack_dict(self):
+        self.schema_keys_list, self.schema_values_list, self.data_list = [], [], []
+        for item in self.variable.items():
+            self.__pack_obj(item)
+
+    def __pack_obj(self, item):
+        key, value = item
+        schema, data = self.__pack_item(key)
+        self.schema_keys_list.append(schema)
+        self.data_list.append(data)
+        schema, data = self.__pack_item(value)
+        self.schema_values_list(schema)
+        self.data_list.append(data)
+
+    def __pack_item(self, item):
+        tp = Type().define_by_variable(item)
+        return tp().pack(item)
+
+    def __pack_schema(self):
+        self.__pack_type()
+        self.__pack_sign_of_size()
+        self.__define_compress_value()
+        self.__compress_keys_schema()
+        self.__compress_values_schema()
+        self.__pack_compress_flag()
+        self.__pack_length()
+        self.__pack_type_items()
+
+    def __pack_type_items(self):
+        if self.compress_flag != Type.obj_are_unequal:
+            self.__pack_first_obj_schema()
+        self.__pack_rest_obj_schema()
+
+    def __pack_first_obj_schema(self):
+        self.schema += (self.schema_keys_list[0] + self.schema_values_list[0])
+        self.schema_keys_list = self.schema_keys_list[1: ]
+        self.schema_values_list = self.schema_values_list[1: ]
+
+    def __pack_rest_obj_schema(self):
+        self.schema += (''.join(self.schema_keys_list) + ''.join(self.schema_values_list))
+
+    def __pack_length(self):
+        fmt = byte_order+struct_format_unsign[self.sign_of_size]
+        self.schema += struct.pack(fmt, self.length)
+
+    def __pack_compress_flag(self):
+        self.schema = Byte(self.schema).put_number_on_place(
+            number = self.compress_flag,
+            place = Type.schema_equal_bit
+            ).get()
+
+    def __define_compress_value(self):
+        self.compress_flag = 0
+
+    def __pack_type(self):
+        self.schema = Type().pack(self)
+
+    def __pack_sign_of_size(self):
+        self.schema = SchemaHandler().pack_sign_of_size(self.schema, self.sign_of_size)
+
+    def __compress_keys_schema(self):
+        self.schema_keys_list = self.__compress_obj_schema(self.schema_keys_list, Type.keys_are_equal)
+
+    def __compress_values_schema(self):
+        self.schema_values_list = self.__compress_obj_schema(self.schema_values_list, Type.values_are_equal)
+
+    def __compress_obj_schema(self, obj_list, obj_equal_flag):
+        if len(obj_list) < 2:
+            return obj_list
+        if len(list(set(obj_list))) == 1:
+            self.__set_obj_is_equal(obj_equal_flag)
+            return [obj_list[0]]
+
+    def __set_obj_is_equal(self, obj_equal_flag):
+        self.compress_flag += obj_equal_flag
 
     def pack(self, variable):
         self.variable = variable
@@ -553,7 +639,8 @@ class Type:
     schema_bit_length_bit = 3
     schema_max_sign_of_size = 3
 
-    list_items_is_equal = 1
+    obj_are_unequal = 0
+    items_are_equal = 1
     keys_are_equal = 1
     values_are_equal = 2
     schema_equal_bit = 0
@@ -801,7 +888,7 @@ def test_integer():
     print '-' * 10
     print 'Integer'
     additional_data = '\xff'
-    pack_test_cases = [
+    cases = [
         # regular length 1 byte (b)
         {'value': 0, 'schema': '\x00', 'data': '\x00'},
         {'value': 0x7f, 'schema': '\x00', 'data': '\x7f'},
@@ -822,25 +909,25 @@ def test_integer():
         {'value': 0x7fffffffffffffff, 'schema': '\x18', 'data': '\x7f\xff\xff\xff\xff\xff\xff\xff'},
         {'value': -(0x8000000000000000), 'schema': '\x18', 'data': '\x80\x00\x00\x00\x00\x00\x00\x00'},
     ]
-    test_pack_cases(Integer, pack_test_cases)
+    test_cases(Integer, cases)
 
 
 def test_boolean():
     print '-' * 10
     print 'Boolean'
-    pack_test_cases = [
+    cases = [
         {'value': True, 'schema': '\x60', 'data': '\x01'},
         {'value': False, 'schema': '\x60', 'data': '\x00'},
         {'value': None, 'schema': '\x60', 'data': '\xff'},
     ]
-    test_pack_cases(Boolean, pack_test_cases)
+    test_cases(Boolean, cases)
 
 
 def test_string():
     print '-' * 10
     print 'String'
     additional_data = '\xff'
-    pack_test_cases = [
+    cases = [
         {'value': 'abc', 'schema': '\x40\x03', 'data': 'abc'},
         {'value': '123', 'schema': '\x40\x03', 'data': '123'},
         {'value': 'Лис', 'schema': '\x40\x06', 'data': 'Лис'},
@@ -852,7 +939,7 @@ def test_string():
      ]
 
     # additional condition // [:10]
-    for case in pack_test_cases:
+    for case in cases:
         schema, data = String().pack(case['value'])
         if schema != case['schema']:
             print 'Error pack schema', \
@@ -865,7 +952,7 @@ def test_string():
                     'got data:', data.encode('hex')[:10], \
                     'expected data', case['data'].encode('hex')[:10]
 
-    for case in pack_test_cases:
+    for case in cases:
         value, schema_tail, data_tail = String().unpack(
             schema=case['schema']+additional_data,
             data=case['data']+additional_data
@@ -891,7 +978,7 @@ def test_float():
     print 'Float'
 
     additional_data = '\xff'
-    pack_test_cases = [
+    cases = [
         {'value': -0.0000000001,  'schema': '\x20', 'data': '\xf6\xff'            },  # -10  1
         {'value': 1e-10,          'schema': '\x20', 'data': '\xf6\x01'            },  # -10  1
         {'value': 1e+127,         'schema': '\x20', 'data': '\x7f\x01'            },  #  127 1
@@ -913,7 +1000,7 @@ def test_float():
         {'value': float('-inf'),  'schema': '\x38', 'data': '\x80\x80\x00\x00\x00\x00\x00\x00\x00'}, #
         {'value': float('inf'),   'schema': '\x38', 'data': '\x80\x80\x00\x00\x00\x00\x00\x00\x01'}, #
     ]
-    for case in pack_test_cases:
+    for case in cases:
         schema, data = Float().pack(case['value'])
         if schema != case['schema']:
             print 'Error pack schema', \
@@ -927,7 +1014,7 @@ def test_float():
                 'got data:', data.encode('hex'), \
                 'expected data', case['data'].encode('hex')
 
-    for case in pack_test_cases:
+    for case in cases:
         value, schema_tail, data_tail = Float().unpack(
             schema=case['schema']+additional_data,
             data=case['data']+additional_data
@@ -952,7 +1039,7 @@ def test_float():
 def test_list():
     print '-' * 10
     print 'List'
-    pack_test_cases = [
+    cases = [
         {'value': [], 'schema': '\x80\x00', 'data': ''},
         {'value': [1, 1], 'schema': '\x81\x02\x00', 'data': '\x01\x01'},
         {'value': [1, None], 'schema': '\x80\x02\x00\x60', 'data': '\x01\xff'},
@@ -961,53 +1048,59 @@ def test_list():
         {'value': [], 'schema': '\x80\x00', 'data': ''},
         {'value': [1, [1]], 'schema': '\x80\x02\x00\x80\x01\x00', 'data': '\x01\x01'},
     ]
-    test_pack_cases(List, pack_test_cases)
+    test_cases(List, cases)
 
 
 def test_dict():
     print '-' * 10
     print 'Dict'
-    pack_test_cases = [
+    cases = [
         {'value': {}, 'schema': '\xa0\x00', 'data': ''},
     ]
-    test_pack_cases(Dictionary, pack_test_cases)
+    test_cases(Dictionary, cases)
 
 
-def test_pack_cases(cls, pack_test_cases):
+def test_pack(cls, case):
+    schema, data = cls().pack(case['value'])
+    if schema != case['schema']:
+        print 'Error pack schema', \
+            'value:',  case['value'], \
+            'got schema:', schema.encode('hex'), \
+            'expected schema:', case['schema'].encode('hex')
+
+    if data != case['data']:
+        print 'Error pack data', \
+            'value', case['value'], \
+            'got data:', data.encode('hex'), \
+            'expected data', case['data'].encode('hex')
+
+
+def test_unpack(cls, case):
     additional_data = '\xff'
-    for case in pack_test_cases:
-        schema, data = cls().pack(case['value'])
-        if schema != case['schema']:
-            print 'Error pack schema', \
-                'value:',  case['value'], \
-                'got schema:', schema.encode('hex'), \
-                'expected schema:', case['schema'].encode('hex')
+    value, schema_tail, data_tail = cls().unpack(
+        schema=case['schema']+additional_data,
+        data=case['data']+additional_data
+    )
+    if value != case['value']:
+        print 'Error unpack value', \
+            'expected value:',  case['value'], \
+            'got value:', value
+    if schema_tail != additional_data:
+        print 'Error unpack wrong schema_tail', \
+            'value', case['value'], \
+            'got schema_tail:', schema_tail.encode('hex'), \
+            'expected schema_tail:', additional_data.encode('hex')
+    if data_tail != additional_data:
+        print 'Error unpack wrong schema_tail', \
+            'value', case['value'], \
+            'got data_tail:', data_tail.encode('hex'), \
+            'expected data_tail:', additional_data.encode('hex')
 
-        if data != case['data']:
-            print 'Error pack data', \
-                'value', case['value'], \
-                'got data:', data.encode('hex'), \
-                'expected data', case['data'].encode('hex')
 
-    for case in pack_test_cases:
-        value, schema_tail, data_tail = cls().unpack(
-            schema=case['schema']+additional_data,
-            data=case['data']+additional_data
-        )
-        if value != case['value']:
-            print 'Error unpack value', \
-                'expected value:',  case['value'], \
-                'got value:', value
-        if schema_tail != additional_data:
-            print 'Error unpack wrong schema_tail', \
-                'value', case['value'], \
-                'got schema_tail:', schema_tail.encode('hex'), \
-                'expected schema_tail:', additional_data.encode('hex')
-        if data_tail != additional_data:
-            print 'Error unpack wrong schema_tail', \
-                'value', case['value'], \
-                'got data_tail:', data_tail.encode('hex'), \
-                'expected data_tail:', additional_data.encode('hex')
+def test_cases(cls, cases):
+    for case in cases:
+        test_pack(cls, case)
+        test_unpack(cls, case)
 
 
 def tests():
