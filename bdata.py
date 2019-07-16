@@ -17,6 +17,55 @@ struct_format_unsign = ['B', 'H', 'I', 'Q']
 byte_order = '>'
 
 
+def pack(obj):
+    tp = Type().define_by_variable(obj)
+    schema, data = tp().pack(obj)
+    pack_data = pack_self_define_length(len(schema)) + \
+                schema + \
+                pack_self_define_length(len(data)) + \
+                data
+    return pack_data
+
+
+def unpack(data):
+    length, data_tail = unpack_self_define_length(data)
+    schema = data_tail[: length]
+    data_tail = data_tail[length: ]
+    length, data_tail = unpack_self_define_length(data_tail)
+    data = data_tail[: length]
+
+    cls = Type().unpack(schema)
+    obj = cls()
+    value, _, _ = obj.unpack(schema, data)
+    return value
+
+
+def pack_self_define_length(number):
+    # bytes    8     4     2    1
+    # sign  0xff, 0xfe, 0xfd 0xfc
+    if number <= 0xfc:
+        return chr(number)
+    if number <= 0xffff:
+        return '\xfd' + struct.pack(byte_order + 'H', number)
+    if number <= 0xffffffff:
+        return '\xfe' + struct.pack(byte_order + 'I', number)
+    if number <= 0xffffffffffffffff:
+        return '\xff' + struct.pack(byte_order + 'Q', number)
+
+
+def unpack_self_define_length(data):
+    sign = ord(data[0])
+    data = data[1: ]
+    if sign <= 0xfc:
+        return sign, data
+    if sign == 0xfd:
+        return struct.unpak(byte_order + 'H', data[: 2]), data[2: ]
+    if sign == 0xfe:
+        return struct.unpak(byte_order + 'I', data[: 4]), data[4: ]
+    if sign == 0xff:
+        return struct.unpak(byte_order + 'Q', data[: 8]), data[8: ]
+
+
 def define_hex_size_of_sign_number(number):
     for sign_of_size in xrange(Type.schema_max_sign_of_size+1):
         max_val = (1<<(8*(1<<sign_of_size)))/2-1
@@ -692,14 +741,6 @@ class Dictionary:
         self.schema
 
 
-class Contraction:
-    def pack(self, item):
-        pass
-
-    def unpack(self, item):
-        pass
-
-
 class Type:
     '''
     # type bits mark as 1
@@ -740,7 +781,6 @@ class Type:
         Boolean,
         List,
         Dictionary,
-        Contraction,
     )
 
     def define_by_variable(self, variable):
@@ -789,69 +829,6 @@ class NotFound:
 
 
 not_find = NotFound()
-
-
-class BTYPE:
-    b_type = {
-        0: type(None),
-        1: bool,
-        2: int,
-        3: str
-    }
-
-    def pack(self, t):
-        pass
-
-    def unpack(self, t):
-        pass
-
-    def validator(self, t):
-        pass
-
-    '''
-    NONE =      0
-    BOOL =      1
-    INT =       2
-    INT_LEN =   3
-    FLOAT =     4
-    FLOAT_LEN = 5
-    STR =       6
-    HASH =      7
-    ARRAY =     8
-    INT_8
-    INT_16
-    INT_32
-    INT_64
-
-
-    '''
-
-
-
-    #    2: int,          # positiv integer
-    #    3: int,          # negativ integer
-    #    4: int,          # positiv integet positiv exp
-    #    5: int,          # negativ integer positiv exp
-    #    6: int,          # positiv integet negativ exp
-    #    7: int,          # negativ integer negativ exp
-
-    def pack(self, value):
-        if not isinstance(value, (int, long, float, Decimal)):
-            print 'Error: not a number'
-            raise
-        sign = False if value < 0 else True
-        exp = False
-        if value - int(value) != 0 or value % 10 == 0:
-            exp = True
-
-        if not sign and not exp:
-            pass
-
-    def unpack(self, value, t=None):
-        pass
-
-    def validator(self, value, t=None):
-        pass
 
 
 class BDATA:
@@ -1145,6 +1122,53 @@ def test_dict():
     test_cases(Dictionary, cases)
 
 
+def test_obj():
+    print '-' * 10
+    print 'Dict'
+    cases = [
+        {'value': [1],           'data': ''},                                                      # -3
+        {'value': {},            'data': '\x06\x00\x02\xa0\x00\x01\x00'},                          # -2
+        {'value': [],            'data': '\x06\x00\x02\x80\x00\x01\x00'},                          # -2
+        {'value': [0, 1],        'data': ''},                                                      # -1
+        {'value': {0: 0},        'data': '\x0a\x00\x04\xa0\x01\x00\x00\x01\x02\x00\x00'},          #  0
+        {'value': {0: []},       'data': ''},                                                      #  1
+        {'value': {0: 0, 1: 0},  'data': '\x0c\x00\x04\xa3\x02\x00\x00\x01\x04\x00\x00\x01\x00'},  #  6
+        {'value': [1, 'a', 3.5], 'data': ''},                  #  1
+        {'value': [1, 20, 3],    'data': '' },                 #  2
+        {'value': [1, 20, 3, -2],  'data': ''},                #  5
+        {'value': [1, 20, 3, '1'], 'data': ''},                #  2
+        {'value': [1, 20, 3, '1', '0232'], 'data': '15000980050000004001400401080114033130323332'}, # 4
+        {'value': [1, 20, 3, '1', '0232', 2, 3, {1:1, 4: 'q'}], 'data': '2300118008000000400140040000a10200004001010e0114033130323332020301010471'}, # 16
+        {'value': 'qwertyqwerty', 'data': '120002400c010c717765727479717765727479'},  # -2
+        {'value': 0,              'data': '06000100010100'},               # -3
+        {'value': 1000,           'data': '07000108010203e8'},             # -1
+        {'value': 0x7fffffff,     'data': '0900011001047fffffff'},         #  3
+        {'value': 100000.0,       'data': '0700012001020501'},             #  3
+        {'value': 11.01,          'data': '080001280103fe044d'},           # -1
+        {'value': [11.01],        'data': '0a00038001280103fe044d'},       # -1
+        {'value': [11.01, 5.03],  'data': '0d00038102280106fe044dfe01f7'}, # -2
+        {'value': [11.01, 5.03, 80.99], 'data': '1000038103280109fe044dfe01f7fe1fa3'}, #  6
+    ]
+
+    for case in cases:
+        data = pack(case['value'])
+        value = unpack(data)
+
+        if case['value'] != value:
+            print 'Error pack/unpack obj', \
+                'got value:', case['value'], \
+                'expected data:', value
+        '''
+        if data != case['data']:
+            print 'Error pack obj', \
+                'value:', case['value'], \
+                'got data:', data.encode('hex'), \
+                'expected data:', case['data'].encode('hex')
+        '''
+        print 'length:', case['value'], len(json.dumps(case['value']))-len(data)
+        #print data.encode('hex')
+
+
 def test_pack(cls, case):
     schema, data = cls().pack(case['value'])
     if schema != case['schema']:
@@ -1190,13 +1214,13 @@ def test_cases(cls, cases):
 
 def tests():
     print 'test start'
-    test_string()
-    test_integer()
-    test_boolean()
-    test_float()
-    test_list()
-    test_dict()
-
+    #test_string()
+    #test_integer()
+    #test_boolean()
+    #test_float()
+    #test_list()
+    #test_dict()
+    test_obj()
     print '-' * 10
     print 'test end'
 
