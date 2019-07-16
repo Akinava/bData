@@ -1124,7 +1124,7 @@ def test_dict():
 
 def test_obj():
     print '-' * 10
-    print 'Dict'
+    print 'Object'
     cases = [
         {'value': [1],           'data': ''},                                                      # -3
         {'value': {},            'data': '\x06\x00\x02\xa0\x00\x01\x00'},                          # -2
@@ -1165,7 +1165,7 @@ def test_obj():
                 'got data:', data.encode('hex'), \
                 'expected data:', case['data'].encode('hex')
         '''
-        print 'length:', case['value'], len(json.dumps(case['value']))-len(data)
+        #print 'length:', case['value'], len(json.dumps(case['value']))-len(data)
         #print data.encode('hex')
 
 
@@ -1214,12 +1214,12 @@ def test_cases(cls, cases):
 
 def tests():
     print 'test start'
-    #test_string()
-    #test_integer()
-    #test_boolean()
-    #test_float()
-    #test_list()
-    #test_dict()
+    test_string()
+    test_integer()
+    test_boolean()
+    test_float()
+    test_list()
+    test_dict()
     test_obj()
     print '-' * 10
     print 'test end'
