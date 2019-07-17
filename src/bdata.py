@@ -41,17 +41,17 @@ def pack_self_define_length(number):
     # bytes    8     4     2    1
     # sign  0xff, 0xfe, 0xfd 0xfc
     if number <= 0xfc:
-        return chr(number)
+        return struct.pack(byte_order + 'B', number)
     if number <= 0xffff:
-        return '\xfd' + struct.pack(byte_order + 'H', number)
+        return b'\xfd' + struct.pack(byte_order + 'H', number)
     if number <= 0xffffffff:
-        return '\xfe' + struct.pack(byte_order + 'I', number)
+        return b'\xfe' + struct.pack(byte_order + 'I', number)
     if number <= 0xffffffffffffffff:
-        return '\xff' + struct.pack(byte_order + 'Q', number)
+        return b'\xff' + struct.pack(byte_order + 'Q', number)
 
 
 def unpack_self_define_length(data):
-    sign = ord(data[0])
+    sign = struct.unpack(byte_order + 'B', data[0: 1])[0]
     data = data[1: ]
     if sign <= 0xfc:
         return sign, data
@@ -64,7 +64,7 @@ def unpack_self_define_length(data):
 
 
 def define_hex_size_of_sign_number(number):
-    for sign_of_size in xrange(Type.schema_max_sign_of_size+1):
+    for sign_of_size in range(Type.schema_max_sign_of_size+1):
         max_val = (1<<(8*(1<<sign_of_size)))/2-1
         min_val = -(1<<(8*(1<<sign_of_size)))/2
         if min_val <= number <= max_val:
@@ -73,7 +73,7 @@ def define_hex_size_of_sign_number(number):
 
 
 def define_hex_size_of_unsign_number(number):
-    for sign_of_size in xrange(Type.schema_max_sign_of_size+1):
+    for sign_of_size in range(Type.schema_max_sign_of_size+1):
         max_val = 1<<(8*(1<<sign_of_size))
         if number < max_val:
             return sign_of_size
@@ -85,15 +85,15 @@ class Byte:
     def __init__(self, variable=0):
         if isinstance(variable, int):
             self.variable = variable
-        if isinstance(variable, str):
-            self.variable = ord(variable)
+        if isinstance(variable, bytes):
+            self.variable = struct.unpack(byte_order + 'B', variable)[0]
 
     def shift_bits(self, bit_number):
         self.variable <<= bit_number
         return self
 
     def get(self):
-        return chr(self.variable)
+        return struct.pack(byte_order + 'B', self.variable)
 
     def put_number_on_place(self, number, place):
         self.variable = self.variable|(number<<place)
@@ -168,12 +168,12 @@ class Integer:
         return self.schema, self.data
 
     def __unpack_sign_of_size(self):
-        self.sign_of_size = SchemaHandler().unpack_sign_of_size(self.schema[0])
+        self.sign_of_size = SchemaHandler().unpack_sign_of_size(self.schema[0: 1])
 
     def __unpack_schema(self):
         self.__unpack_sign_of_size()
         self.schema_tail = self.schema[1:]
-        self.schema = self.schema[0]
+        self.schema = self.schema[0: 1]
 
     def __unpack_data(self):
         data_lengh = 2**self.sign_of_size
@@ -208,10 +208,10 @@ class Float:
 
     denormalized = {
         #               -128
-        #float('-nan'): '\x80\x7f\xff\xff\xff\xff\xff\xff\xfe',
-        'nan':  '\x80\x7f\xff\xff\xff\xff\xff\xff\xff',
-        '-inf': '\x80\x80\x00\x00\x00\x00\x00\x00\x00',
-        'inf':  '\x80\x80\x00\x00\x00\x00\x00\x00\x01'
+        #float('-nan'): b'\x80\x7f\xff\xff\xff\xff\xff\xff\xfe',
+        'nan':  b'\x80\x7f\xff\xff\xff\xff\xff\xff\xff',
+        '-inf': b'\x80\x80\x00\x00\x00\x00\x00\x00\x00',
+        'inf':  b'\x80\x80\x00\x00\x00\x00\x00\x00\x01'
     }
 
     def __get_mantissa_and_exponent_from_variable(self):
@@ -240,7 +240,7 @@ class Float:
 
     def __check_exponent_size(self):
         if self.exponent > 0xFF:
-            print 'Error: exponent more then 0xFF'
+            print('Error: exponent more then 0xFF')
             raise
 
     def __put_exponent_to_data(self):
@@ -289,13 +289,13 @@ class Float:
     def __unpack_schema(self):
         self.__unpack_length()
         self.schema_tail = self.schema[1: ]
-        self.schema = self.schema[0]
+        self.schema = self.schema[0: 1]
 
     def __unpack_length(self):
-        self.sign_of_mantissa_size = SchemaHandler().unpack_sign_of_size(self.schema[0])
+        self.sign_of_mantissa_size = SchemaHandler().unpack_sign_of_size(self.schema[0: 1])
 
     def __unpack_exponent(self):
-        self.exponent = struct.unpack('>b', self.data[0])[0]
+        self.exponent = struct.unpack('>b', self.data[0: 1])[0]
 
     def __unpack_mantissa(self):
         data_lengh = 2 ** self.sign_of_mantissa_size
@@ -360,7 +360,7 @@ class String:
         self.schema += struct.pack(fmt, self.length)
 
     def __define_sign_of_size(self):
-        self.length = len(self.variable)
+        self.length = len(self.data)
         self.sign_of_size = define_hex_size_of_unsign_number(self.length)
 
     def __pack_schema(self):
@@ -369,8 +369,8 @@ class String:
         self.__pack_length()
 
     def __pack_data(self):
+        self.data = self.variable.encode('utf8')
         self.__define_sign_of_size()
-        self.data = self.variable
 
     def pack(self, variable):
         self.variable = variable
@@ -379,7 +379,7 @@ class String:
         return self.schema, self.data
 
     def __unpack_sign_of_size(self):
-        self.sign_of_size = SchemaHandler().unpack_sign_of_size(self.schema[0])
+        self.sign_of_size = SchemaHandler().unpack_sign_of_size(self.schema[0: 1])
 
     def __unpack_length(self):
         fmt = byte_order + struct_format_unsign[self.sign_of_size]
@@ -396,7 +396,7 @@ class String:
         self.__unpack_length()
 
     def __unpack_data(self):
-        self.variable = self.data[: self.length]
+        self.variable = self.data[: self.length].decode('utf8')
         self.data_tail = self.data[self.length: ]
 
     def unpack(self, schema, data):
@@ -412,9 +412,9 @@ class String:
 
 class Boolean:
     variables = {
-        False: '\x00',
-        True:  '\x01',
-        None:  '\xff',
+        False: b'\x00',
+        True:  b'\x01',
+        None:  b'\xff',
     }
 
     def pack(self, variable):
@@ -425,13 +425,11 @@ class Boolean:
     def unpack(self, schema, data):
         self.schema = schema
         self.data = data
-        self.variable = self.variables.keys()[
-            self.variables.values().index(self.data[0])
-        ]
+        self.variable = {v: k for k, v in self.variables.items()}[self.data[0: 1]]
         return self.variable, self.schema[1:], self.data[1:]
 
     def get_schema(self):
-        self.schema[0]
+        self.schema[0: 1]
 
 
 class List:
@@ -446,7 +444,7 @@ class List:
         self.__join_data()
 
     def __join_data(self):
-        self.data = "".join(self.data_list)
+        self.data = b''.join(self.data_list)
 
     def __pack_list(self):
         self.schema_list, self.data_list = [], []
@@ -481,7 +479,7 @@ class List:
         self.schema = Type().pack(self)
 
     def __pack_type_items(self):
-        self.schema += ''.join(self.schema_list)
+        self.schema += b''.join(self.schema_list)
 
     def __set_type_of_variables_is_equal(self):
         self.schema = Byte(self.schema).put_number_on_place(
@@ -510,7 +508,7 @@ class List:
 
     def __check_schema_compressed(self):
         self.items_are_equal = False
-        if Byte(self.schema[0]).check_bit(Type.schema_equal_bit) == Type.items_are_equal:
+        if Byte(self.schema[0: 1]).check_bit(Type.schema_equal_bit) == Type.items_are_equal:
             self.items_are_equal = True
 
     def __unpack_length(self):
@@ -524,7 +522,7 @@ class List:
         self.schema = self.schema[ :length_bits_end]
 
     def __unpack_sign_of_size(self):
-        self.sign_of_size = SchemaHandler().unpack_sign_of_size(self.schema[0])
+        self.sign_of_size = SchemaHandler().unpack_sign_of_size(self.schema[0: 1])
 
     def __uncompress_items_schema(self, item_index, obj):
         last_index = self.length - 1
@@ -541,7 +539,7 @@ class List:
     def __unpack_data(self):
         self.data_tail = self.data
         self.variable = []
-        for item_index in xrange(self.length):
+        for item_index in range(self.length):
             obj = self.__unpack_obj()
             self.__uncompress_items_schema(item_index, obj)
 
@@ -569,7 +567,7 @@ class Dictionary:
         self.__join_data()
 
     def __join_data(self):
-        self.data = "".join(self.data_list)
+        self.data = b"".join(self.data_list)
 
     def __define_sign_of_size(self):
         self.length = len(self.variable)
@@ -616,10 +614,10 @@ class Dictionary:
     def __pack_compress_schema(self, schema_list, index):
         if index < len(schema_list):
             return schema_list[index]
-        return ''
+        return b''
 
     def __pack_rest_obj_schema(self):
-        for index in xrange(len(self.schema_keys_list or self.schema_values_list)):
+        for index in range(len(self.schema_keys_list or self.schema_values_list)):
             key_schema = self.__pack_compress_schema(self.schema_keys_list, index)
             val_schema = self.__pack_compress_schema(self.schema_values_list, index)
             self.schema += (key_schema + val_schema)
@@ -671,12 +669,12 @@ class Dictionary:
 
     def __check_schema_compressed(self):
         length_of_bits = Byte().define_bits_by_number(Type.keys_are_equal + Type.values_are_equal)
-        sign_of_compressed_schema = Byte(self.schema[0]).get_number_by_edge(Type.schema_equal_bit, length_of_bits)
+        sign_of_compressed_schema = Byte(self.schema[0: 1]).get_number_by_edge(Type.schema_equal_bit, length_of_bits)
         self.keys_are_equal = True if sign_of_compressed_schema & Type.keys_are_equal else False
         self.values_are_equal = True if sign_of_compressed_schema & Type.values_are_equal else False
 
     def __unpack_sign_of_size(self):
-        self.sign_of_size = SchemaHandler().unpack_sign_of_size(self.schema[0])
+        self.sign_of_size = SchemaHandler().unpack_sign_of_size(self.schema[0: 1])
 
     def __unpack_length(self):
         fmt = byte_order + struct_format_unsign[self.sign_of_size]
@@ -691,7 +689,7 @@ class Dictionary:
     def __unpack_data(self):
         self.data_tail = self.data
         self.variable = {}
-        for item_index in xrange(self.length):
+        for item_index in range(self.length):
             self.__uncompress_keys_schema(item_index)
             key_obj = self.__unpack_obj()
             self.__uncompress_values_schema(item_index)
@@ -762,7 +760,7 @@ class Type:
 
     types_mapping = (
         (int,        Integer),
-        (long,       Integer),
+        # (long,       Integer), # for python2.7
         (float,      Float),
         (str,        String),
         (bool,       Boolean),
@@ -797,5 +795,5 @@ class Type:
 
     def unpack(self, schema):
         length_of_bits = Byte().define_bits_by_number(len(Type.types_index))
-        type_index = Byte(schema[0]).get_number_by_edge(Type.schema_type_bit, length_of_bits)
+        type_index = Byte(schema[0: 1]).get_number_by_edge(Type.schema_type_bit, length_of_bits)
         return Type.types_index[type_index]
