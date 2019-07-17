@@ -199,28 +199,28 @@ def test_obj():
     print '-' * 10
     print 'Object'
     cases = [
-        {'value': [1],           'data': ''},                                                      # -3
-        {'value': {},            'data': '\x06\x00\x02\xa0\x00\x01\x00'},                          # -2
-        {'value': [],            'data': '\x06\x00\x02\x80\x00\x01\x00'},                          # -2
-        {'value': [0, 1],        'data': ''},                                                      # -1
-        {'value': {0: 0},        'data': '\x0a\x00\x04\xa0\x01\x00\x00\x01\x02\x00\x00'},          #  0
-        {'value': {0: []},       'data': ''},                                                      #  1
-        {'value': {0: 0, 1: 0},  'data': '\x0c\x00\x04\xa3\x02\x00\x00\x01\x04\x00\x00\x01\x00'},  #  6
-        {'value': [1, 'a', 3.5], 'data': ''},                  #  1
-        {'value': [1, 20, 3],    'data': '' },                 #  2
-        {'value': [1, 20, 3, -2],  'data': ''},                #  5
-        {'value': [1, 20, 3, '1'], 'data': ''},                #  2
-        {'value': [1, 20, 3, '1', '0232'], 'data': '15000980050000004001400401080114033130323332'}, # 4
-        {'value': [1, 20, 3, '1', '0232', 2, 3, {1:1, 4: 'q'}], 'data': '2300118008000000400140040000a10200004001010e0114033130323332020301010471'}, # 16
-        {'value': 'qwertyqwerty', 'data': '120002400c010c717765727479717765727479'},  # -2
-        {'value': 0,              'data': '06000100010100'},               # -3
-        {'value': 1000,           'data': '07000108010203e8'},             # -1
-        {'value': 0x7fffffff,     'data': '0900011001047fffffff'},         #  3
-        {'value': 100000.0,       'data': '0700012001020501'},             #  3
-        {'value': 11.01,          'data': '080001280103fe044d'},           # -1
-        {'value': [11.01],        'data': '0a00038001280103fe044d'},       # -1
-        {'value': [11.01, 5.03],  'data': '0d00038102280106fe044dfe01f7'}, # -2
-        {'value': [11.01, 5.03, 80.99], 'data': '1000038103280109fe044dfe01f7fe1fa3'}, #  6
+        {'value': [1],           'data': '\x03\x80\x01\x00\x01\x01'},            # -3
+        {'value': {},            'data': '\x02\xa0\x00\x00'},                    # -2
+        {'value': [],            'data': '\x02\x80\x00\x00'},                    # -2
+        {'value': [0, 1],        'data': '\x03\x81\x02\x00\x02\x00\x01'},        # -1
+        {'value': {0: 0},        'data': '\x04\xa0\x01\x00\x00\x02\x00\x00'},    #  0
+        {'value': {0: []},       'data': '\x05\xa0\x01\x00\x80\x00\x01\x00'},    #  1
+        {'value': {0: 0, 1: 0},  'data': '\x04\xa3\x02\x00\x00\x04\x00\x00\x01\x00'},          #  6
+        {'value': [1, 'a', 3.5], 'data': '\x06\x80\x03\x00\x40\x01\x20\x04\x01\x61\xff\x23'},  #  1
+        {'value': [1, 20, 3],    'data': '\x03\x81\x03\x00\x03\x01\x14\x03' },                 #  2
+        {'value': [1, 20, 3, -2],  'data': '\x03\x81\x04\x00\x04\x01\x14\x03\xfe'},            #  5
+        {'value': [1, 20, 3, '1'], 'data': '07800400000040010401140331'.decode('hex')},        #  2
+        {'value': [1, 20, 3, '1', '0232'], 'data': '09800500000040014004080114033130323332'.decode('hex')},                                                  #  4
+        {'value': [1, 20, 3, '1', '0232', 2, 3, {1:1, 4: 'q'}], 'data': '118008000000400140040000a102000040010e0114033130323332020301010471'.decode('hex')}, # 16
+        {'value': 'qwertyqwerty', 'data': '02400c0c717765727479717765727479'.decode('hex')},   # -2
+        {'value': 0,              'data': '\x01\x00\x01\x00'},                                 # -3
+        {'value': 1000,           'data': '\x01\x08\x02\x03\xe8'},                             # -1
+        {'value': 0x7fffffff,     'data': '0110047fffffff'.decode('hex')},                     #  3
+        {'value': 100000.0,       'data': '\x01\x20\x02\x05\x01'},                             #  3
+        {'value': 11.01,          'data': '\x01\x28\x03\xfe\x04\x4d'},                         # -1
+        {'value': [11.01],        'data': '0380012803fe044d'.decode('hex')},                   # -1
+        {'value': [11.01, 5.03],  'data': '0381022806fe044dfe01f7'.decode('hex')},             # -2
+        {'value': [11.01, 5.03, 80.99], 'data': '0381032809fe044dfe01f7fe1fa3'.decode('hex')}, #  6
     ]
 
     for case in cases:
@@ -231,15 +231,14 @@ def test_obj():
             print 'Error pack/unpack obj', \
                 'got value:', case['value'], \
                 'expected data:', value
-        '''
+
         if data != case['data']:
             print 'Error pack obj', \
                 'value:', case['value'], \
                 'got data:', data.encode('hex'), \
                 'expected data:', case['data'].encode('hex')
-        '''
+
         #print 'length:', case['value'], len(json.dumps(case['value']))-len(data)
-        #print data.encode('hex')
 
 
 def test_pack(cls, case):
