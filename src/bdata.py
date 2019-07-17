@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import struct
-import json
 from decimal import Decimal
 
 
