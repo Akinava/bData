@@ -18,18 +18,18 @@ def pack(obj):
     tp = Type().define_by_variable(obj)
     schema, data = tp().pack(obj)
     pack_data = pack_self_define_length(len(schema)) + \
-                schema + \
                 pack_self_define_length(len(data)) + \
+                schema + \
                 data
     return pack_data
 
 
 def unpack(data):
-    length, data_tail = unpack_self_define_length(data)
-    schema = data_tail[: length]
-    data_tail = data_tail[length: ]
-    length, data_tail = unpack_self_define_length(data_tail)
-    data = data_tail[: length]
+    schema_length, data_tail = unpack_self_define_length(data)
+    data_length, data_tail = unpack_self_define_length(data_tail)
+    schema = data_tail[: schema_length]
+    data_tail = data_tail[schema_length: ]
+    data = data_tail
 
     cls = Type().unpack(schema)
     obj = cls()

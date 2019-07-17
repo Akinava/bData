@@ -8,12 +8,12 @@ python2.7
 
 - usage
 ```python
->>> import bData
->>> data = bData.pack({})
+>>> import bdata
+>>> data = bdata.pack({})
 >>> data
-'\x02\xa0\x00\x00'
->>> obj = bData.unpack(data)
->>> print obj
+'\x02\x00\xa0\x00'
+>>> obj = bdata.unpack(data)
+>>> obj
 {}
 ```
 
