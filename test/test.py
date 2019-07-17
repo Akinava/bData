@@ -199,6 +199,7 @@ def test_obj():
     print '-' * 10
     print 'Object'
     cases = [
+        {'value': True,          'data': '\x01\x60\x01\x01'},                    #  0
         {'value': [1],           'data': '\x03\x80\x01\x00\x01\x01'},            # -3
         {'value': {},            'data': '\x02\xa0\x00\x00'},                    # -2
         {'value': [],            'data': '\x02\x80\x00\x00'},                    # -2

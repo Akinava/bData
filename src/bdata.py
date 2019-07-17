@@ -783,6 +783,8 @@ class Type:
     def define_by_variable(self, variable):
         for tp_real, tp_bdata in self.types_mapping:
             if isinstance(variable, tp_real):
+                if isinstance(variable, bool):
+                    return Boolean
                 return tp_bdata
         raise Exception("Error: can't define type of data {}".format(type(variable)))
 
