@@ -10,7 +10,7 @@
 
 - parts  
 
-'\x01\x01\x00\x2a' has two parts: schema and data  
+data '\x01\x01\x00\x2a' has two parts: schema and data  
 '\x01' '\x01' '\x00\x2a'  
 part '\x01' is 1 it is length of schema '\x00'  
 part '\x01' is 1 it is length of data '\x2a'  
@@ -19,7 +19,7 @@ part '\x01' is 1 it is length of data '\x2a'
 
 - data type  
 
-the type of data is located in bit 7, 6, 5
+the type of data is located in type byte in bit 7, 6, 5
 
 ```python
 >>> bdata.pack(0).encode('hex')
@@ -27,7 +27,7 @@ the type of data is located in bit 7, 6, 5
 ```
 '01' schema length 1 byte  
 '01' data length 1 byte  
-'00' type byte is int  
+'00' type byte, data is int  
 '00' data is 0  
 
 ```python
@@ -36,13 +36,13 @@ the type of data is located in bit 7, 6, 5
 ```
 '01' schema length  
 '01' data length  
-'60' type byte = bool/none  
-'01' data True  
+'60' type byte, data is bool/none  
+'01' data is True  
 
 - sign of size
 
 the sign of data size located in bit 4, 3  
-00 = 1 byte -128 / 127  
+00 = 1 byte  
 01 = 2 bytes  
 10 = 4 bytes  
 11 = 8 bytes  
