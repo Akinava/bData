@@ -10,8 +10,8 @@ python2.7
 ```python
 >>> import bData
 >>> data = bData.pack({})
->>> print data.encode('hex')
-'060002a0000100'
+>>> data
+'\x02\xa0\x00\x00'
 >>> obj = bData.unpack(data)
 >>> print obj
 {}
