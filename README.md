@@ -3,7 +3,7 @@
 This is a library which helps to encode [JSON](https://en.wikipedia.org/wiki/JSON) object to binary data and decode it back.
 
 - required  
-python3.6
+python3.x
 
 
 - usage
