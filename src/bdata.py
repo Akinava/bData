@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
-
+"""
+This file is subject to the terms and conditions defined in
+file 'LICENSE.txt', which is part of this source code package.
+Copyright © 2019
+Author: Andrei Chernov
+email: akinava@gmail.com
+"""
 import struct
 from decimal import Decimal
 
