@@ -1,17 +1,12 @@
 # -*- coding: utf-8 -*-
-"""
-This file is subject to the terms and conditions defined in
-file 'LICENSE.txt', which is part of this source code package.
-Copyright © 2019
-Author: Andrei Chernov
-email: akinava@gmail.com
-"""
 import struct
 from decimal import Decimal
 
 
 __author__ = 'Akinava'
 __author_email__ = 'akinava@gmail.com'
+__copyright__ = "Copyright © 2019"
+__license__ = "MIT License"
 __version__ = [0, 0]
 
 
