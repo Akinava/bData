@@ -3,4 +3,4 @@ compress value in Dictionary
 Contraction / make it possible to define complicated part of schema or data in to contractions, it could be made only manually
 unpack data by custom schema
 unpack several objects in pack
-add hachsumm to schema
+add hash sum to schema / it make easy to check if cached schema is not changed
